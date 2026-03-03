@@ -22,7 +22,7 @@ export class OrganizationService {
   constructor(
     private organizationRepository: OrganizationRepository,
     private memberRepository: MemberRepository,
-  ) { }
+  ) {}
   /**
    * Create a new organization owned by the given user.
    *
@@ -36,19 +36,16 @@ export class OrganizationService {
     data: { name: string; slug: string },
   ) {
     const ownerObjectId = new Types.ObjectId(userId);
-
     const org = await this.organizationRepository.create({
       ...data,
       ownerId: ownerObjectId,
     });
-
     // Automatically add the creator as an OWNER in the membership collection
     await this.memberRepository.addMember({
       userId: ownerObjectId,
       organizationId: org._id as Types.ObjectId,
       role: MemberRole.OWNER,
     });
-
     return org;
   }
 
@@ -67,9 +64,8 @@ export class OrganizationService {
    */
   async getOrganization(orgId: string) {
     const orgObjectId = new Types.ObjectId(orgId);
-    const organization = await this.organizationRepository.findById(
-      orgObjectId,
-    );
+    const organization =
+      await this.organizationRepository.findById(orgObjectId);
 
     if (!organization) {
       throw new NotFoundError("Organization not found");

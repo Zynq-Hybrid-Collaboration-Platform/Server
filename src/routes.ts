@@ -1,6 +1,7 @@
 import { Application } from "express";
 import { authRoutes } from "./domains/auth";
 import { organizationRoutes } from "./domains/organization";
+import { channelRoutes } from "./domains/channel";
 
 const API_V1 = "/api/v1";
 
@@ -17,16 +18,8 @@ const API_V1 = "/api/v1";
 export function registerRoutes(app: Application): void {
   // Auth domain — public + protected routes managed internally by auth.routes.ts
   app.use(`${API_V1}/auth`, authRoutes);
-  app.use(`/`, (req, res) => {
-    res.status(200).json({
-      success: true,
-      data: {
-        message: "Organization routes",
-      },
-    });
-  });
-
   app.use(`${API_V1}/organizations`, organizationRoutes);
+  app.use(`${API_V1}/channels`, channelRoutes);
 
   // ------------------------------------------------------------------
   // Future domain routes (uncommented as each domain is implemented):

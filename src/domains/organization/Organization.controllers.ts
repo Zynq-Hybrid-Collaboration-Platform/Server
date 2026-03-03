@@ -101,7 +101,7 @@ export class OrganizationController {
         orgId,
       );
       sendSuccess(res, {
-        message: "Organization deleted successfully",
+        message: "Organization deleted succe",
       });
     },
   );
