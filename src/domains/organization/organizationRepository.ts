@@ -10,12 +10,10 @@ export class OrganizationRepository {
   async findById(orgId: Types.ObjectId) {
     return Organization.findById(orgId);
   }
-
-  //  Find by Slug
+  //  Find by Slugs
   async findBySlug(slug: string) {
     return Organization.findOne({ slug });
   }
-
   //  Get all organizations of a user (owner)
   async findByOwner(ownerId: Types.ObjectId) {
     return Organization.find({ ownerId });

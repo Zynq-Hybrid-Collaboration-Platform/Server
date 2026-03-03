@@ -29,11 +29,7 @@ const router = Router();
  * GET /home
  * unified loader for homepage data (all servers user belongs to)
  */
-router.get(
-  "/home",
-  authenticate as never,
-  organizationController.getHomeData,
-);
+router.get("/home", authenticate as never, organizationController.getHomeData);
 
 /**
  * POST /
