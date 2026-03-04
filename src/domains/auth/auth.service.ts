@@ -13,6 +13,7 @@ import {
   IUserSafe,
   IUserLean,
   IRefreshTokenDTO,
+  IGoogleAuthDTO,
   IAuthServiceInterface,
 } from "./auth.types";
 import {
@@ -115,10 +116,8 @@ export class AuthService implements IAuthServiceInterface {
       throw new AuthenticationError("Invalid email or password");
     }
 
-    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
-    if (!isPasswordValid) {
-      throw new AuthenticationError("Invalid email or password");
-    }
+    const isPasswordValid = await bcrypt.compare(dto.password, user.password!);
+    if (!isPasswordValid) throw new AuthenticationError("Invalid email or password");
 
     const tokens = this.generateTokenPair(
       user._id.toString(),
@@ -218,7 +217,7 @@ export class AuthService implements IAuthServiceInterface {
 
     const isCurrentValid = await bcrypt.compare(
       dto.currentPassword,
-      user.password
+      user.password!
     );
     if (!isCurrentValid) {
       throw new AuthenticationError("Current password does not match");
@@ -344,6 +343,37 @@ export class AuthService implements IAuthServiceInterface {
   }
 
   // ─────────────────────────────────────────────────────
+  // Google OAuth
+  // ─────────────────────────────────────────────────────
+
+  async googleLogin(dto: IGoogleAuthDTO): Promise<IAuthResponse> {
+    // 1. Check by googleId first (returning user)
+    let user = await this.authRepository.findByGoogleId(dto.googleId);
+
+    if (!user) {
+      // 2. Check if email already exists (link existing account)
+      const existingUser = await this.authRepository.findByEmail(dto.email);
+
+      if (existingUser) {
+        await this.authRepository.linkGoogleId(existingUser._id.toString(), dto.googleId);
+        user = { ...existingUser, googleId: dto.googleId };
+      } else {
+        // 3. Create brand new Google user
+        const newUser = await this.authRepository.createGoogleUser(dto);
+        user = newUser as unknown as IUserLean;
+      }
+    }
+
+    const tokens = this.generateTokenPair(user._id.toString(), user.organizations);
+    const hashedRefresh = this.hashToken(tokens.refreshToken);
+    await this.authRepository.updateRefreshToken(user._id.toString(), hashedRefresh);
+
+    logger.info("Google login successful", { userId: user._id, email: user.email });
+
+    return { user: this.sanitizeUser(user), tokens };
+  }
+
+  // ─────────────────────────────────────────────────────
   // Private Helpers
   // ─────────────────────────────────────────────────────
 
@@ -408,7 +438,7 @@ export class AuthService implements IAuthServiceInterface {
       id: user._id.toString(),
       name: user.name,
       email: user.email,
-      username: user.username,
+      username: user.username ?? "",
       avatar: user.avatar,
       status: user.status,
       organizations: user.organizations.map((o) => ({

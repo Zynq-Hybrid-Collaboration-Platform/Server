@@ -12,6 +12,7 @@ import {
   resetPasswordSchema,
   refreshTokenSchema,
 } from "./auth.validator";
+import passport from "../../core/config/passport.config";
 
 // ─────────────────────────────────────────────────────
 // Dependency Assembly (Lightweight DI)
@@ -79,5 +80,30 @@ router.put(
   validate(changePasswordSchema),
   authController.changePassword
 );
+
+// ─────────────────────────────────────────────────────
+// Google OAuth
+// ─────────────────────────────────────────────────────
+
+router.get(
+  "/google",
+  passport.authenticate("google", { scope: ["profile", "email"] })
+);
+
+router.get(
+  "/google/callback",
+  passport.authenticate("google", {
+    session: false,
+    failureRedirect: "/api/v1/auth/google/failure",
+  }),
+  authController.googleCallback
+);
+
+router.get("/google/failure", (_req, res) => {
+  res.status(401).json({
+    success: false,
+    error: { code: "GOOGLE_AUTH_FAILED", message: "Google authentication failed" },
+  });
+});
 
 export { router as authRoutes };

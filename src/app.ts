@@ -2,6 +2,7 @@ import express, { Application } from "express";
 import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import passport from "./core/config/passport.config";
 import { globalErrorHandler } from "./core/middleware/error-handler";
 import { registerRoutes } from "./routes";
 import { config } from "./core/config/env";
@@ -39,6 +40,7 @@ export function createApp(): Application {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
+  app.use(passport.initialize());
 
   // --- Request Logging (dev only) ---
   if (config.isDevelopment()) {

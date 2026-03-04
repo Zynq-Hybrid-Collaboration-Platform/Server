@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { Profile } from "passport-google-oauth20";
 import { AuthService } from "./auth.service";
 import { catchAsync } from "../../core/middleware/async-handler";
 import { sendSuccess } from "../../core/utils/response";
@@ -214,4 +215,29 @@ export class AuthController {
       sendSuccess(res, { message: "Password has been reset successfully" });
     }
   );
+
+  googleCallback = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const profile = req.user as Profile;
+
+      const googleId = profile.id;
+      const email = profile.emails?.[0]?.value;
+      const name = profile.displayName;
+      const avatar = profile.photos?.[0]?.value;
+
+      if (!email) {
+        res.redirect(`${config.FRONTEND_URL}/oauth-error?reason=no_email`);
+        return;
+      }
+
+      const result = await this.authService.googleLogin({ googleId, email, name, avatar });
+
+      res.cookie("refreshToken", result.tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
+      res.cookie("accessToken", result.tokens.accessToken, ACCESS_COOKIE_OPTIONS);
+
+      res.redirect(`${config.FRONTEND_URL}/oauth-success?token=${result.tokens.accessToken}`);
+    } catch {
+      res.redirect(`${config.FRONTEND_URL}/oauth-error`);
+    }
+  };
 }

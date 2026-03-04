@@ -18,8 +18,9 @@ export interface IUserDocument extends Document {
   _id: Types.ObjectId;
   name: string;
   email: string;
-  username: string;
-  password: string;
+  username?: string;
+  password?: string;
+  googleId?: string;
   avatar: string;
   status: "online" | "offline" | "idle";
   organizations: IOrganizationMembership[];
@@ -41,6 +42,7 @@ export type IUserLean = Pick<
   | "email"
   | "username"
   | "password"
+  | "googleId"
   | "avatar"
   | "status"
   | "organizations"
@@ -86,6 +88,13 @@ export interface IRefreshTokenDTO {
   refreshToken: string;
 }
 
+export interface IGoogleAuthDTO {
+  googleId: string;
+  email: string;
+  name: string;
+  avatar?: string;
+}
+
 // ─────────────────────────────────────────────────────────
 // Response Types — what services return to controllers
 // ─────────────────────────────────────────────────────────
@@ -125,4 +134,5 @@ export interface IAuthServiceInterface {
     role: string
   ): Promise<void>;
   removeOrganizationFromUser(userId: string, orgId: string): Promise<void>;
+  googleLogin(dto: IGoogleAuthDTO): Promise<IAuthResponse>;
 }
