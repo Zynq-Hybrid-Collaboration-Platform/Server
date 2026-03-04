@@ -69,7 +69,7 @@ export function createApp(): Application {
       success: false,
       error: {
         code: "NOT_FOUND",
-        message: "The requested endpoint does not exist",
+        message: "The requested endpoint does not exis just typed now t",
       },
     });
   });

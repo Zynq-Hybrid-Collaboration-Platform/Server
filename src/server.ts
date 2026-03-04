@@ -35,7 +35,6 @@ async function bootstrap(): Promise<void> {
   // 5. Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info(`${signal} received — starting graceful shutdown`);
-
     httpServer.close(async () => {
       logger.info("HTTP server closed");
       await disconnectDB();
