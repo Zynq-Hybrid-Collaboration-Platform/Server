@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import mongoose from "mongoose";
 import { UserModel } from "./auth.model";
 import { IGoogleAuthDTO, IUserDocument, IUserLean } from "./auth.types";
 
@@ -76,20 +77,31 @@ export class AuthRepository {
   // Mutations
   // ─────────────────────────────────────────────────────
 
-  async create(data: {
-    name: string;
-    email: string;
-    username: string;
-    password: string;
-    organizations: Array<{ orgId: string; role: string }>;
-  }): Promise<IUserDocument> {
-    return UserModel.create({
-      name: data.name,
-      email: data.email,
-      username: data.username,
-      password: data.password,
-      organizations: data.organizations,
-    });
+  async create(
+    data: {
+      name: string;
+      email: string;
+      username: string;
+      password: string;
+      organizations: Array<{ orgId: string; role: string }>;
+    },
+    session?: mongoose.ClientSession,
+  ): Promise<IUserDocument> {
+    // UserModel.create([doc], { session }) is the Mongoose API for
+    // transactional inserts — it returns an array, so destructure index 0.
+    const [user] = await UserModel.create(
+      [
+        {
+          name: data.name,
+          email: data.email,
+          username: data.username,
+          password: data.password,
+          organizations: data.organizations,
+        },
+      ],
+      session ? { session } : undefined,
+    );
+    return user;
   }
 
   async updatePassword(userId: string, hashedPassword: string): Promise<void> {

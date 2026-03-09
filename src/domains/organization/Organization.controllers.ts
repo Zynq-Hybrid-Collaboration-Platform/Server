@@ -8,17 +8,51 @@ import { IAuthenticatedRequest } from "../../core/types/request.types";
  * Organization Controller — HTTP layer only.
  *
  * Rules:
- * - Extract validated data from req
- * - Call service
- * - Format response
+ * - Extract validated data from req.body / req.params
+ * - Delegate all logic to OrganizationService
+ * - Format HTTP response via sendSuccess
  * - ZERO business logic
- * - ZERO DB calls
+ * - ZERO direct database calls
  */
 export class OrganizationController {
   private organizationService: OrganizationService;
+
   constructor(organizationService: OrganizationService) {
     this.organizationService = organizationService;
   }
+
+  /**
+   * POST /api/v1/organizations/register
+   * PUBLIC — no authentication required.
+   *
+   * Creates a new organization and returns its human-readable join code.
+   * The code (ORG-XXXXXX) is used by users when calling POST /api/v1/auth/register-user.
+   */
+  registerOrganization = catchAsync(
+    async (req: Request, res: Response): Promise<void> => {
+      const { name, slug } = req.body;
+
+      const result = await this.organizationService.registerOrganization({
+        name,
+        slug,
+      });
+
+      sendSuccess(
+        res,
+        {
+          message: "Organization created successfully",
+          organizationId: result.organization._id,
+          organizationCode: result.organizationCode,
+        },
+        201,
+      );
+    },
+  );
+
+  /**
+   * POST /api/v1/organizations
+   * PROTECTED — authenticated user becomes OWNER.
+   */
   createOrganization = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const authReq = req as IAuthenticatedRequest;
@@ -28,22 +62,15 @@ export class OrganizationController {
         authReq.user.userId,
         { name, slug },
       );
+
       sendSuccess(
         res,
-        {
-          message: "Organization created successfully",
-          organization,
-        },
+        { message: "Organization created successfully", organization },
         201,
       );
     },
   );
 
-  /**
-   * GET /api/v1/organizations
-   *
-   * Returns all organizations of logged-in user
-   */
   getUserOrganizations = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const authReq = req as IAuthenticatedRequest;
@@ -54,30 +81,15 @@ export class OrganizationController {
     },
   );
 
-  /**
-   * GET /api/v1/organizations/:orgId
-   *
-   * Fetch single organization profile
-   */
   getOrganization = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const { orgId } = req.params;
-
       const organization =
         await this.organizationService.getOrganization(orgId);
-
       sendSuccess(res, { organization });
     },
   );
 
-  /**
-   * GET /api/v1/organizations/:orgId/sidebar
-   *
-   * Returns Discord-style sidebar structure:
-   *  - Organization info
-   *  - Categories sorted by position
-   *  - Channels grouped inside categories
-   */
   getSidebar = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const { orgId } = req.params;
@@ -86,11 +98,6 @@ export class OrganizationController {
     },
   );
 
-  /**
-   * DELETE /api/v1/organizations/:orgId
-   *
-   * Only owner allowed (checked in service)
-   */
   deleteOrganization = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const authReq = req as IAuthenticatedRequest;
@@ -100,17 +107,10 @@ export class OrganizationController {
         authReq.user.userId,
         orgId,
       );
-      sendSuccess(res, {
-        message: "Organization deleted successfully",
-      });
+      sendSuccess(res, { message: "Organization deleted successfully" });
     },
   );
 
-  /**
-   * GET /api/v1/organizations/home
-   *
-   * Unified endpoint to load everything needed for the dashboard.
-   */
   getHomeData = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const authReq = req as IAuthenticatedRequest;

@@ -61,8 +61,12 @@ export interface IRegisterDTO {
   name: string;
   email: string;
   password: string;
-  username: string;
-  organizationId: string;
+  /** Optional — auto-generated from email prefix + random suffix when absent. */
+  username?: string;
+  /** Existing path — raw MongoDB ObjectId string. Optional for backward compatibility. */
+  organizationId?: string;
+  /** New path — human-readable join code (ORG-XXXXXX). */
+  organizationCode?: string;
 }
 
 export interface ILoginDTO {

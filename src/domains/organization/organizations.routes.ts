@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { authenticate } from "../../core/middleware/auth.middleware";
-// import { validate } from "../../core/middleware/validate.middleware";
+import { validate } from "../../core/middleware/validate.middleware";
 import { OrganizationController } from "./Organization.controllers";
 import { OrganizationService } from "./organizationService";
 import { OrganizationRepository } from "./organizationRepository";
 import { MemberRepository } from "../member/memberRepository";
+import { orgRegistrationSchema } from "./organization.validator";
 
 // ─────────────────────────────────────────────────────
 // Dependency Assembly (Repository → Service → Controller)
@@ -20,66 +21,60 @@ export const organizationService = new OrganizationService(
 const organizationController = new OrganizationController(organizationService);
 
 const router = Router();
+
 // ─────────────────────────────────────────────────────
-// Organization Routes
+// Public Routes (no authentication required)
 // Base path (when mounted): /api/v1/organizations
+//
+// IMPORTANT: static paths like /register MUST appear before dynamic
+// paths like /:orgId — Express matches routes in declaration order.
 // ─────────────────────────────────────────────────────
 
 /**
- * GET /home
- * unified loader for homepage data (all servers user belongs to)
+ * POST /register
+ * Public organization registration. Returns an ORG-XXXXXX join code
+ * that users supply when calling POST /api/v1/auth/register-user.
  */
+router.post(
+  "/register",
+  validate(orgRegistrationSchema),
+  organizationController.registerOrganization,
+);
+
+// ─────────────────────────────────────────────────────
+// Protected Routes (JWT authentication required)
+// ─────────────────────────────────────────────────────
+
 router.get(
   "/home",
   authenticate as never,
   organizationController.getHomeData,
 );
 
-/**
- * POST /
- * Create a new organization for the authenticated user.
- */
 router.post(
   "/",
   authenticate as never,
-  // validate(createOrganizationSchema),
   organizationController.createOrganization,
 );
 
-/**
- * GET /
- * Get all organizations owned by the authenticated user.
- */
 router.get(
   "/",
   authenticate as never,
   organizationController.getUserOrganizations,
 );
 
-/**
- * GET /:orgId
- * Get a single organization by id.
- */
 router.get(
   "/:orgId",
   authenticate as never,
   organizationController.getOrganization,
 );
 
-/**
- * GET /:orgId/sidebar
- * Get sidebar structure for the organization.
- */
 router.get(
   "/:orgId/sidebar",
   authenticate as never,
   organizationController.getSidebar,
 );
 
-/**
- * DELETE /:orgId
- * Delete an organization (only owner is allowed; enforced in service).
- */
 router.delete(
   "/:orgId",
   authenticate as never,

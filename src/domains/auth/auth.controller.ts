@@ -88,6 +88,53 @@ export class AuthController {
   });
 
   /**
+   * POST /api/v1/auth/register-user
+   * Public — no auth required.
+   *
+   * Organization-linked registration. The caller must supply a valid
+   * organizationCode (ORG-XXXXXX) obtained from POST /api/v1/organizations/register.
+   *
+   * Delegates entirely to authService.register() which:
+   *   1. Validates the code against the database.
+   *   2. Creates the User and Member records atomically inside a transaction.
+   *   3. Issues access + refresh token pair.
+   */
+  registerUserWithOrg = catchAsync(
+    async (req: Request, res: Response): Promise<void> => {
+      const { name, email, password, username, organizationCode } = req.body;
+
+      const result = await this.authService.register({
+        name,
+        email,
+        password,
+        username,
+        organizationCode,
+      });
+
+      res.cookie(
+        "refreshToken",
+        result.tokens.refreshToken,
+        REFRESH_COOKIE_OPTIONS,
+      );
+      res.cookie(
+        "accessToken",
+        result.tokens.accessToken,
+        ACCESS_COOKIE_OPTIONS,
+      );
+
+      sendSuccess(
+        res,
+        {
+          message: "User registered successfully",
+          user: result.user,
+          accessToken: result.tokens.accessToken,
+        },
+        201,
+      );
+    },
+  );
+
+  /**
    * POST /api/v1/auth/login
    * Public — no auth required.
    *
@@ -240,4 +287,10 @@ export class AuthController {
       res.redirect(`${config.FRONTEND_URL}/oauth-error`);
     }
   };
+
+  getCurrentUser = catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const authReq = req as IAuthenticatedRequest;
+    const user = await this.authService.findUserById(authReq.user.userId);
+    sendSuccess(res, { user });
+  });
 }
