@@ -13,6 +13,7 @@ import {
   IUserSafe,
   IUserLean,
   IRefreshTokenDTO,
+  IGoogleAuthDTO,
   IAuthServiceInterface,
 } from "./auth.types";
 import {
@@ -24,6 +25,10 @@ import {
 import { config } from "../../core/config/env";
 import { logger } from "../../core/logger/logger";
 import { emailService } from "../../core/services/email.service";
+import mongoose, { Types } from "mongoose";
+import { OrganizationRepository } from "../organization/organizationRepository";
+import { MemberRepository } from "../member/memberRepository";
+import { MemberRole } from "../member/member.model";
 
 const SALT_ROUNDS = 12;
 
@@ -47,9 +52,17 @@ const RESET_TOKEN_EXPIRES_MS = 60 * 60 * 1000;
  */
 export class AuthService implements IAuthServiceInterface {
   private authRepository: AuthRepository;
+  private organizationRepository: OrganizationRepository;
+  private memberRepository: MemberRepository;
 
-  constructor(authRepository: AuthRepository) {
+  constructor(
+    authRepository: AuthRepository,
+    organizationRepository: OrganizationRepository,
+    memberRepository: MemberRepository,
+  ) {
     this.authRepository = authRepository;
+    this.organizationRepository = organizationRepository;
+    this.memberRepository = memberRepository;
   }
 
   // ─────────────────────────────────────────────────────
@@ -57,55 +70,100 @@ export class AuthService implements IAuthServiceInterface {
   // ─────────────────────────────────────────────────────
 
   async register(dto: IRegisterDTO): Promise<IAuthResponse> {
-    // Parallel uniqueness checks — faster than sequential
-    const [emailExists, usernameExists] = await Promise.all([
-      this.authRepository.existsByEmail(dto.email),
-      this.authRepository.existsByUsername(dto.username),
-    ]);
+    // ── Email uniqueness check ────────────────────────────────────────────
+    const emailExists = await this.authRepository.existsByEmail(dto.email);
+    if (emailExists) throw new ConflictError("User already exists");
 
-    if (emailExists) {
-      throw new ConflictError("User already exists");
-    }
-    if (usernameExists) {
-      throw new ConflictError("Username is already taken");
+    // ── Resolve username ──────────────────────────────────────────────────
+    // Caller-supplied → validate uniqueness and use as-is.
+    // Not supplied    → auto-generate from email prefix + 4-char hex suffix,
+    //                   matching the strategy in createGoogleUser().
+    const username = await this.resolveUsername(dto.username, dto.email);
+
+    // ── Resolve organization ─────────────────────────────────────
+    //
+    // organizationCode path (new)  — look up org by ORG-XXXXXX code,
+    //                                 validate it exists, then extract _id.
+    // organizationId path   (old)  — caller supplies a raw ObjectId string;
+    //                                 existing behaviour, unchanged.
+    let resolvedOrgId: string | undefined;
+
+    if (dto.organizationCode) {
+      const org = await this.organizationRepository.findByCode(
+        dto.organizationCode,
+      );
+      if (!org) throw new NotFoundError("Organization");
+      resolvedOrgId = (org._id as Types.ObjectId).toString();
+    } else if (dto.organizationId) {
+      resolvedOrgId = dto.organizationId;
     }
 
     const hashedPassword = await bcrypt.hash(dto.password, SALT_ROUNDS);
 
-    // Create with initial org membership only if organizationId was provided
-    const user = await this.authRepository.create({
-      name: dto.name,
-      email: dto.email,
-      username: dto.username,
-      password: hashedPassword,
-      organizations: dto.organizationId
-        ? [{ orgId: dto.organizationId, role: "member" }]
-        : [],
-    });
+    // ── Atomic user + membership creation (MongoDB transaction) ────────
+    //
+    // Both the User document and the Member record must be written together.
+    // If either write fails, withTransaction() rolls back both automatically,
+    // preventing an orphaned User with no organization membership.
+    const session = await mongoose.startSession();
 
+    // TypeScript requires definite assignment; user is always set inside
+    // withTransaction or the session throws before we reach the code below.
+    let user!: Awaited<ReturnType<AuthRepository["create"]>>;
+
+    try {
+      await session.withTransaction(async () => {
+        user = await this.authRepository.create(
+          {
+            name: dto.name,
+            email: dto.email,
+            username,
+            password: hashedPassword,
+            organizations: resolvedOrgId
+              ? [{ orgId: resolvedOrgId, role: MemberRole.MEMBER }]
+              : [],
+          },
+          session,
+        );
+
+        // Create the Member record only when an org was supplied via code.
+        // The organizationId path (legacy) does not create a Member record
+        // to preserve the existing behaviour of that flow.
+        if (dto.organizationCode && resolvedOrgId) {
+          await this.memberRepository.addMember(
+            {
+              userId: user._id,
+              organizationId: new Types.ObjectId(resolvedOrgId),
+              role: MemberRole.MEMBER,
+            },
+            session,
+          );
+        }
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    // ── Token issuance ────────────────────────────────────────────
     const tokens = this.generateTokenPair(
       user._id.toString(),
-      user.organizations
+      user.organizations,
     );
 
-    // Store hashed refresh token for rotation detection
     const hashedRefresh = this.hashToken(tokens.refreshToken);
     await this.authRepository.updateRefreshToken(
       user._id.toString(),
-      hashedRefresh
+      hashedRefresh,
     );
 
     logger.info("User registered", { userId: user._id, email: user.email });
 
-    // Send welcome email (non-blocking — don't await)
+    // Non-blocking — a welcome email failure must not abort a successful registration.
     emailService
       .sendWelcomeEmail(user.email, user.name)
       .catch((err) => logger.error("Failed to send welcome email", { err }));
 
-    return {
-      user: this.sanitizeUser(user),
-      tokens,
-    };
+    return { user: this.sanitizeUser(user), tokens };
   }
 
   async login(dto: ILoginDTO): Promise<IAuthResponse> {
@@ -115,10 +173,8 @@ export class AuthService implements IAuthServiceInterface {
       throw new AuthenticationError("Invalid email or password");
     }
 
-    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
-    if (!isPasswordValid) {
-      throw new AuthenticationError("Invalid email or password");
-    }
+    const isPasswordValid = await bcrypt.compare(dto.password, user.password!);
+    if (!isPasswordValid) throw new AuthenticationError("Invalid email or password");
 
     const tokens = this.generateTokenPair(
       user._id.toString(),
@@ -218,7 +274,7 @@ export class AuthService implements IAuthServiceInterface {
 
     const isCurrentValid = await bcrypt.compare(
       dto.currentPassword,
-      user.password
+      user.password!
     );
     if (!isCurrentValid) {
       throw new AuthenticationError("Current password does not match");
@@ -344,6 +400,37 @@ export class AuthService implements IAuthServiceInterface {
   }
 
   // ─────────────────────────────────────────────────────
+  // Google OAuth
+  // ─────────────────────────────────────────────────────
+
+  async googleLogin(dto: IGoogleAuthDTO): Promise<IAuthResponse> {
+    // 1. Check by googleId first (returning user)
+    let user = await this.authRepository.findByGoogleId(dto.googleId);
+
+    if (!user) {
+      // 2. Check if email already exists (link existing account)
+      const existingUser = await this.authRepository.findByEmail(dto.email);
+
+      if (existingUser) {
+        await this.authRepository.linkGoogleId(existingUser._id.toString(), dto.googleId);
+        user = { ...existingUser, googleId: dto.googleId };
+      } else {
+        // 3. Create brand new Google user
+        const newUser = await this.authRepository.createGoogleUser(dto);
+        user = newUser as unknown as IUserLean;
+      }
+    }
+
+    const tokens = this.generateTokenPair(user._id.toString(), user.organizations);
+    const hashedRefresh = this.hashToken(tokens.refreshToken);
+    await this.authRepository.updateRefreshToken(user._id.toString(), hashedRefresh);
+
+    logger.info("Google login successful", { userId: user._id, email: user.email });
+
+    return { user: this.sanitizeUser(user), tokens };
+  }
+
+  // ─────────────────────────────────────────────────────
   // Private Helpers
   // ─────────────────────────────────────────────────────
 
@@ -398,6 +485,42 @@ export class AuthService implements IAuthServiceInterface {
   }
 
   /**
+   * Resolve the username for a new registration.
+   *
+   * Caller-supplied: checks uniqueness and returns it unchanged.
+   * Auto-generated:  derives from the email prefix (alphanumeric only, lowercase,
+   *                  max 20 chars) plus a 4-char random hex suffix — identical
+   *                  strategy to createGoogleUser() in auth.repository.ts.
+   *                  Retries up to 5 times on collision; falls back to a
+   *                  12-char suffix (practically collision-proof).
+   */
+  private async resolveUsername(
+    requested: string | undefined,
+    email: string,
+  ): Promise<string> {
+    if (requested) {
+      const taken = await this.authRepository.existsByUsername(requested);
+      if (taken) throw new ConflictError("Username is already taken");
+      return requested;
+    }
+
+    const prefix = email
+      .split("@")[0]
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toLowerCase()
+      .slice(0, 20);
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = `${prefix}_${crypto.randomBytes(2).toString("hex")}`;
+      const taken = await this.authRepository.existsByUsername(candidate);
+      if (!taken) return candidate;
+    }
+
+    // All 5 short-suffix attempts collided — use 6-byte suffix (astronomically rare)
+    return `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
+  }
+
+  /**
    * Strip sensitive fields from user document.
    * Password, refresh token, reset token are NEVER sent to client.
    */
@@ -408,7 +531,7 @@ export class AuthService implements IAuthServiceInterface {
       id: user._id.toString(),
       name: user.name,
       email: user.email,
-      username: user.username,
+      username: user.username ?? "",
       avatar: user.avatar,
       status: user.status,
       organizations: user.organizations.map((o) => ({

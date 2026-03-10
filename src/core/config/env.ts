@@ -56,6 +56,11 @@ export const config = {
 
   // ── OAuth (optional — only needed when Google login is enabled) ──
   GOOGLE_CLIENT_ID: optionalEnv("GOOGLE_CLIENT_ID", ""),
+  GOOGLE_CLIENT_SECRET: optionalEnv("GOOGLE_CLIENT_SECRET", ""),
+  GOOGLE_CALLBACK_URL: optionalEnv(
+    "GOOGLE_CALLBACK_URL",
+    "http://localhost:5000/api/v1/auth/google/callback"
+  ),
 
   // ── SMTP / Email ─────────────────────────────────────
   // When SMTP_ENABLED is false (default), the email service

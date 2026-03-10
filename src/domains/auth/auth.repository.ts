@@ -1,5 +1,7 @@
+import crypto from "crypto";
+import mongoose from "mongoose";
 import { UserModel } from "./auth.model";
-import { IUserLean, IUserDocument } from "./auth.types";
+import { IGoogleAuthDTO, IUserDocument, IUserLean } from "./auth.types";
 
 /**
  * Auth Repository — the ONLY file in the auth domain that touches Mongoose.
@@ -51,6 +53,12 @@ export class AuthRepository {
       .lean<IUserLean>();
   }
 
+  async findByGoogleId(googleId: string): Promise<IUserLean | null> {
+    return UserModel.findOne({ googleId })
+      .select("+googleId")
+      .lean<IUserLean>();
+  }
+
   // ─────────────────────────────────────────────────────
   // Existence checks
   // ─────────────────────────────────────────────────────
@@ -69,20 +77,31 @@ export class AuthRepository {
   // Mutations
   // ─────────────────────────────────────────────────────
 
-  async create(data: {
-    name: string;
-    email: string;
-    username: string;
-    password: string;
-    organizations: Array<{ orgId: string; role: string }>;
-  }): Promise<IUserDocument> {
-    return UserModel.create({
-      name: data.name,
-      email: data.email,
-      username: data.username,
-      password: data.password,
-      organizations: data.organizations,
-    });
+  async create(
+    data: {
+      name: string;
+      email: string;
+      username: string;
+      password: string;
+      organizations: Array<{ orgId: string; role: string }>;
+    },
+    session?: mongoose.ClientSession,
+  ): Promise<IUserDocument> {
+    // UserModel.create([doc], { session }) is the Mongoose API for
+    // transactional inserts — it returns an array, so destructure index 0.
+    const [user] = await UserModel.create(
+      [
+        {
+          name: data.name,
+          email: data.email,
+          username: data.username,
+          password: data.password,
+          organizations: data.organizations,
+        },
+      ],
+      session ? { session } : undefined,
+    );
+    return user;
   }
 
   async updatePassword(userId: string, hashedPassword: string): Promise<void> {
@@ -138,5 +157,24 @@ export class AuthRepository {
     status: "online" | "offline" | "idle"
   ): Promise<void> {
     await UserModel.findByIdAndUpdate(userId, { status });
+  }
+
+  async createGoogleUser(data: IGoogleAuthDTO): Promise<IUserDocument> {
+    const emailPrefix = data.email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "");
+    const randomSuffix = crypto.randomBytes(2).toString("hex"); // 4 hex chars
+    const username = `${emailPrefix}_${randomSuffix}`;
+
+    return UserModel.create({
+      name: data.name,
+      email: data.email,
+      googleId: data.googleId,
+      avatar: data.avatar ?? "",
+      username,
+      organizations: [],
+    });
+  }
+
+  async linkGoogleId(userId: string, googleId: string): Promise<void> {
+    await UserModel.findByIdAndUpdate(userId, { googleId });
   }
 }

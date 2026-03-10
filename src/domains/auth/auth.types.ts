@@ -18,8 +18,9 @@ export interface IUserDocument extends Document {
   _id: Types.ObjectId;
   name: string;
   email: string;
-  username: string;
-  password: string;
+  username?: string;
+  password?: string;
+  googleId?: string;
   avatar: string;
   status: "online" | "offline" | "idle";
   organizations: IOrganizationMembership[];
@@ -41,6 +42,7 @@ export type IUserLean = Pick<
   | "email"
   | "username"
   | "password"
+  | "googleId"
   | "avatar"
   | "status"
   | "organizations"
@@ -59,8 +61,12 @@ export interface IRegisterDTO {
   name: string;
   email: string;
   password: string;
-  username: string;
-  organizationId: string;
+  /** Optional — auto-generated from email prefix + random suffix when absent. */
+  username?: string;
+  /** Existing path — raw MongoDB ObjectId string. Optional for backward compatibility. */
+  organizationId?: string;
+  /** New path — human-readable join code (ORG-XXXXXX). */
+  organizationCode?: string;
 }
 
 export interface ILoginDTO {
@@ -84,6 +90,13 @@ export interface IResetPasswordDTO {
 
 export interface IRefreshTokenDTO {
   refreshToken: string;
+}
+
+export interface IGoogleAuthDTO {
+  googleId: string;
+  email: string;
+  name: string;
+  avatar?: string;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -125,4 +138,5 @@ export interface IAuthServiceInterface {
     role: string
   ): Promise<void>;
   removeOrganizationFromUser(userId: string, orgId: string): Promise<void>;
+  googleLogin(dto: IGoogleAuthDTO): Promise<IAuthResponse>;
 }

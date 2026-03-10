@@ -50,15 +50,21 @@ const userSchema = new Schema<IUserDocument>(
     },
     username: {
       type: String,
-      required: true,
+      required: false,
       unique: true,
+      sparse: true,
       trim: true,
     },
     password: {
       type: String,
-      required: true,
+      required: false,
       select: false,
     },
+   googleId: {
+  type: String,
+  unique: true,
+  sparse: true
+},
     avatar: {
       type: String,
       default: "",
@@ -99,5 +105,8 @@ userSchema.index({ "organizations.orgId": 1 });
 
 /** Sparse index — only documents with a reset token are indexed */
 userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
+
+/** Sparse index — only documents with a Google ID are indexed */
+// userSchema.index({ googleId: 1 }, { sparse: true });
 
 export const UserModel = mongoose.model<IUserDocument>("User", userSchema);

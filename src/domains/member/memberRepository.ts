@@ -1,13 +1,21 @@
-import { Types } from "mongoose";
+import mongoose, { Types } from "mongoose";
 import { Member, MemberRole, IMember } from "./member.model";
 
 export class MemberRepository {
-    async addMember(data: {
-        userId: Types.ObjectId;
-        organizationId: Types.ObjectId;
-        role?: MemberRole;
-    }): Promise<IMember> {
-        return Member.create(data);
+    async addMember(
+        data: {
+            userId: Types.ObjectId;
+            organizationId: Types.ObjectId;
+            role?: MemberRole;
+        },
+        session?: mongoose.ClientSession,
+    ): Promise<IMember> {
+        // Array form of create() is required for transaction support.
+        const [member] = await Member.create(
+            [data],
+            session ? { session } : undefined,
+        );
+        return member;
     }
 
     async findByUserId(userId: Types.ObjectId): Promise<IMember[]> {

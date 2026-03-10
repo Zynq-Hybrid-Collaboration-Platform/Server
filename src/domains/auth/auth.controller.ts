@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { Profile } from "passport-google-oauth20";
 import { AuthService } from "./auth.service";
 import { catchAsync } from "../../core/middleware/async-handler";
 import { sendSuccess } from "../../core/utils/response";
@@ -85,6 +86,53 @@ export class AuthController {
       201
     );
   });
+
+  /**
+   * POST /api/v1/auth/register-user
+   * Public — no auth required.
+   *
+   * Organization-linked registration. The caller must supply a valid
+   * organizationCode (ORG-XXXXXX) obtained from POST /api/v1/organizations/register.
+   *
+   * Delegates entirely to authService.register() which:
+   *   1. Validates the code against the database.
+   *   2. Creates the User and Member records atomically inside a transaction.
+   *   3. Issues access + refresh token pair.
+   */
+  registerUserWithOrg = catchAsync(
+    async (req: Request, res: Response): Promise<void> => {
+      const { name, email, password, username, organizationCode } = req.body;
+
+      const result = await this.authService.register({
+        name,
+        email,
+        password,
+        username,
+        organizationCode,
+      });
+
+      res.cookie(
+        "refreshToken",
+        result.tokens.refreshToken,
+        REFRESH_COOKIE_OPTIONS,
+      );
+      res.cookie(
+        "accessToken",
+        result.tokens.accessToken,
+        ACCESS_COOKIE_OPTIONS,
+      );
+
+      sendSuccess(
+        res,
+        {
+          message: "User registered successfully",
+          user: result.user,
+          accessToken: result.tokens.accessToken,
+        },
+        201,
+      );
+    },
+  );
 
   /**
    * POST /api/v1/auth/login
@@ -214,4 +262,35 @@ export class AuthController {
       sendSuccess(res, { message: "Password has been reset successfully" });
     }
   );
+
+  googleCallback = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const profile = req.user as Profile;
+
+      const googleId = profile.id;
+      const email = profile.emails?.[0]?.value;
+      const name = profile.displayName;
+      const avatar = profile.photos?.[0]?.value;
+
+      if (!email) {
+        res.redirect(`${config.FRONTEND_URL}/oauth-error?reason=no_email`);
+        return;
+      }
+
+      const result = await this.authService.googleLogin({ googleId, email, name, avatar });
+
+      res.cookie("refreshToken", result.tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
+      res.cookie("accessToken", result.tokens.accessToken, ACCESS_COOKIE_OPTIONS);
+
+      res.redirect(`${config.FRONTEND_URL}/oauth-success?token=${result.tokens.accessToken}`);
+    } catch {
+      res.redirect(`${config.FRONTEND_URL}/oauth-error`);
+    }
+  };
+
+  getCurrentUser = catchAsync(async (req: Request, res: Response): Promise<void> => {
+    const authReq = req as IAuthenticatedRequest;
+    const user = await this.authService.findUserById(authReq.user.userId);
+    sendSuccess(res, { user });
+  });
 }
