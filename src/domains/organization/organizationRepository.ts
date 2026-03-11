@@ -1,42 +1,70 @@
 import { Organization } from "./organization.model";
 import { Types } from "mongoose";
 
-export class OrganizationRepository {
-  // Create Organization
-  async create(data: { name: string; slug: string; ownerId: Types.ObjectId }) {
-    return Organization.create(data);
-  }
-  //  Find by ID
-  async findById(orgId: Types.ObjectId) {
-    return Organization.findById(orgId);
-  }
-  //  Find by Slugs
-  async findBySlug(slug: string) {
-    return Organization.findOne({ slug });
-  }
-  //  Get all organizations of a user (owner)
-  async findByOwner(ownerId: Types.ObjectId) {
-    return Organization.find({ ownerId });
-  }
-  //  Update organization
-  async update(
-    orgId: Types.ObjectId,
-    updateData: Partial<{
-      name: string;
-      slug: string;
-    }>,
-  ) {
-    return Organization.findByIdAndUpdate(orgId, updateData, { new: true });
-  }
+// ─────────────────────────────────────────────────────
+// All database queries for the Organization collection.
+// ─────────────────────────────────────────────────────
 
-  //  Delete organization
-  async delete(orgId: Types.ObjectId) {
-    return Organization.findByIdAndDelete(orgId);
-  }
+/** Find organization by _id */
+export const findById = (orgId: Types.ObjectId) => {
+  return Organization.findById(orgId);
+};
 
-  // Check if slug exists
-  async slugExists(slug: string) {
-    const org = await Organization.findOne({ slug });
-    return !!org;
-  }
-}
+/** Find organization by unique name */
+export const findByName = (name: string) => {
+  return Organization.findOne({ name });
+};
+
+/** Find all organizations that contain this userId in members[] */
+export const findByMember = (userId: Types.ObjectId) => {
+  return Organization.find({ members: userId });
+};
+
+/** Update organization fields (name, roles) */
+export const updateOrg = (
+  orgId: Types.ObjectId,
+  updateData: Partial<{ name: string; roles: string[] }>,
+) => {
+  return Organization.findByIdAndUpdate(orgId, updateData, { new: true });
+};
+
+/** Delete organization by _id */
+export const deleteOrg = (orgId: Types.ObjectId) => {
+  return Organization.findByIdAndDelete(orgId);
+};
+
+/** Push a userId into the members array */
+export const addMember = (orgId: Types.ObjectId, userId: Types.ObjectId) => {
+  return Organization.findByIdAndUpdate(
+    orgId,
+    { $addToSet: { members: userId } },
+    { new: true },
+  );
+};
+
+/** Pull a userId from the members array */
+export const removeMember = (orgId: Types.ObjectId, userId: Types.ObjectId) => {
+  return Organization.findByIdAndUpdate(
+    orgId,
+    { $pull: { members: userId } },
+    { new: true },
+  );
+};
+
+/** Push a role string into the roles array */
+export const addRole = (orgId: Types.ObjectId, role: string) => {
+  return Organization.findByIdAndUpdate(
+    orgId,
+    { $addToSet: { roles: role } },
+    { new: true },
+  );
+};
+
+/** Pull a role string from the roles array */
+export const removeRole = (orgId: Types.ObjectId, role: string) => {
+  return Organization.findByIdAndUpdate(
+    orgId,
+    { $pull: { roles: role } },
+    { new: true },
+  );
+};

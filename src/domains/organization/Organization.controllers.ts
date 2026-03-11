@@ -1,123 +1,66 @@
 import { Request, Response } from "express";
-import { OrganizationService } from "./organizationService";
+import * as orgService from "./organizationService";
 import { catchAsync } from "../../core/middleware/async-handler";
 import { sendSuccess } from "../../core/utils/response";
 import { IAuthenticatedRequest } from "../../core/types/request.types";
 
-/**
- * Organization Controller — HTTP layer only.
- *
- * Rules:
- * - Extract validated data from req
- * - Call service
- * - Format response
- * - ZERO business logic
- * - ZERO DB calls
- */
-export class OrganizationController {
-  private organizationService: OrganizationService;
-  constructor(organizationService: OrganizationService) {
-    this.organizationService = organizationService;
-  }
-  createOrganization = catchAsync(
-    async (req: Request, res: Response): Promise<void> => {
-      const authReq = req as IAuthenticatedRequest;
-      const { name, slug } = req.body;
+// ─────────────────────────────────────────────────────
+// HTTP layer only: extract from req → call service → send response
+// ─────────────────────────────────────────────────────
 
-      const organization = await this.organizationService.createOrganization(
-        authReq.user.userId,
-        { name, slug },
-      );
-      sendSuccess(
-        res,
-        {
-          message: "Organization created successfully",
-          organization,
-        },
-        201,
-      );
-    },
-  );
+/** GET /api/v1/organizations — list user's orgs */
+export const getUserOrganizations = catchAsync(
+  async (req: Request, res: Response): Promise<void> => {
+    const authReq = req as IAuthenticatedRequest;
+    const organizations = await orgService.getUserOrganizations(
+      authReq.user.userId,
+    );
 
-  /**
-   * GET /api/v1/organizations
-   *
-   * Returns all organizations of logged-in user
-   */
-  getUserOrganizations = catchAsync(
-    async (req: Request, res: Response): Promise<void> => {
-      const authReq = req as IAuthenticatedRequest;
-      const organizations = await this.organizationService.getUserOrganizations(
-        authReq.user.userId,
-      );
-      sendSuccess(res, { organizations });
-    },
-  );
+    sendSuccess(res, { organizations });
+  },
+);
 
-  /**
-   * GET /api/v1/organizations/:orgId
-   *
-   * Fetch single organization profile
-   */
-  getOrganization = catchAsync(
-    async (req: Request, res: Response): Promise<void> => {
-      const { orgId } = req.params;
+/** GET /api/v1/organizations/:orgId — single org */
+export const getOrganization = catchAsync(
+  async (req: Request, res: Response): Promise<void> => {
+    const { orgId } = req.params;
+    const organization = await orgService.getOrganization(orgId);
 
-      const organization =
-        await this.organizationService.getOrganization(orgId);
+    sendSuccess(res, { organization });
+  },
+);
 
-      sendSuccess(res, { organization });
-    },
-  );
+/** DELETE /api/v1/organizations/:orgId — admin only */
+export const deleteOrganization = catchAsync(
+  async (req: Request, res: Response): Promise<void> => {
+    const authReq = req as IAuthenticatedRequest;
+    const { orgId } = req.params;
 
-  /**
-   * GET /api/v1/organizations/:orgId/sidebar
-   *
-   * Returns Discord-style sidebar structure:
-   *  - Organization info
-   *  - Categories sorted by position
-   *  - Channels grouped inside categories
-   */
-  getSidebar = catchAsync(
-    async (req: Request, res: Response): Promise<void> => {
-      const { orgId } = req.params;
-      const sidebar = await this.organizationService.getSidebar(orgId);
-      sendSuccess(res, sidebar);
-    },
-  );
+    await orgService.deleteOrganization(authReq.user.userId, orgId);
 
-  /**
-   * DELETE /api/v1/organizations/:orgId
-   *
-   * Only owner allowed (checked in service)
-   */
-  deleteOrganization = catchAsync(
-    async (req: Request, res: Response): Promise<void> => {
-      const authReq = req as IAuthenticatedRequest;
-      const { orgId } = req.params;
+    sendSuccess(res, { message: "Organization deleted successfully" });
+  },
+);
 
-      await this.organizationService.deleteOrganization(
-        authReq.user.userId,
-        orgId,
-      );
-      sendSuccess(res, {
-        message: "Organization deleted succe",
-      });
-    },
-  );
+/** POST /api/v1/organizations/:orgId/members — add member */
+export const addMember = catchAsync(
+  async (req: Request, res: Response): Promise<void> => {
+    const { orgId } = req.params;
+    const { userId } = req.body;
 
-  /**
-   * GET /api/v1/organizations/home
-   *
-   * Unified endpoint to load everything needed for the dashboard.
-   */
-  getHomeData = catchAsync(
-    async (req: Request, res: Response): Promise<void> => {
-      const authReq = req as IAuthenticatedRequest;
-      const data = await this.organizationService.getHomeData(
-        authReq.user.userId,
-      );
-      sendSuccess(res, { data });
-    },
-  );
-}
+    const organization = await orgService.addOrgMember(orgId, userId);
+
+    sendSuccess(res, { message: "Member added successfully", organization });
+  },
+);
+
+/** DELETE /api/v1/organizations/:orgId/members/:userId — remove member */
+export const removeMember = catchAsync(
+  async (req: Request, res: Response): Promise<void> => {
+    const { orgId, userId } = req.params;
+
+    const organization = await orgService.removeOrgMember(orgId, userId);
+
+    sendSuccess(res, { message: "Member removed successfully", organization });
+  },
+);

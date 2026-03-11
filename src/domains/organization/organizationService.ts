@@ -1,123 +1,71 @@
 import { Types } from "mongoose";
-import { OrganizationRepository } from "./organizationRepository";
-import { MemberRepository } from "../member/memberRepository";
-import { MemberRole } from "../member/member.model";
-import { channelService } from "../channel/channelService";
-import { NotFoundError, AuthorizationError } from "../../core/errors";
+import * as orgRepo from "./organizationRepository";
+import { NotFoundError, AuthorizationError, ConflictError } from "../../core/errors";
 
-/**
- * OrganizationService
- *
- * This class contains **all business logic** for the organization domain.
- * It talks to the `OrganizationRepository` (database layer) and exposes
- * high‑level use cases used by controllers, such as:
- *
- * - Creating a new organization for a user
- * - Listing all organizations owned by a user
- * - Fetching a single organization
- * - Returning sidebar data
- * - Deleting an organization with ownership checks
- */
-export class OrganizationService {
-  constructor(
-    private organizationRepository: OrganizationRepository,
-    private memberRepository: MemberRepository,
-  ) {}
-  /**
-   * Create a new organization owned by the given user.
-   *
-   * Steps:
-   * 1. Convert the userId string into a MongoDB ObjectId.
-   * 2. Delegate the actual insert to the repository.
-   * 3. Add the creator as the OWNER member.
-   */
-  async createOrganization(
-    userId: string,
-    data: { name: string; slug: string },
-  ) {
-    const ownerObjectId = new Types.ObjectId(userId);
-    const org = await this.organizationRepository.create({
-      ...data,
-      ownerId: ownerObjectId,
-    });
-    // Automatically add the creator as an OWNER in the membership collection
-    await this.memberRepository.addMember({
-      userId: ownerObjectId,
-      organizationId: org._id as Types.ObjectId,
-      role: MemberRole.OWNER,
-    });
-    return org;
+// ─────────────────────────────────────────────────────
+// Business logic for the organization domain.
+// ─────────────────────────────────────────────────────
+
+/** Get all organizations where the user is a member */
+export const getUserOrganizations = (userId: string) => {
+  const userObjectId = new Types.ObjectId(userId);
+  return orgRepo.findByMember(userObjectId);
+};
+
+/** Fetch a single organization by its _id. Throws if not found. */
+export const getOrganization = async (orgId: string) => {
+  const orgObjectId = new Types.ObjectId(orgId);
+  const org = await orgRepo.findById(orgObjectId);
+
+  if (!org) {
+    throw new NotFoundError("Organization not found");
   }
 
-  /**
-   * Return all organizations where the user is a member.
-   */
-  async getUserOrganizations(userId: string) {
-    const userObjectId = new Types.ObjectId(userId);
-    const memberships = await this.memberRepository.findByUserId(userObjectId);
-    return memberships.map((m) => m.organizationId);
+  return org;
+};
+
+/** Delete an organization. Only the first member (admin) can delete. */
+export const deleteOrganization = async (userId: string, orgId: string) => {
+  const org = await getOrganization(orgId);
+
+  // First member in the array is the creator (admin)
+  const isAdmin =
+    org.members.length > 0 && org.members[0].toString() === userId;
+
+  if (!isAdmin) {
+    throw new AuthorizationError(
+      "Only the organization admin can delete this organization",
+    );
   }
 
-  /**
-   * Fetch a single organization by its id.
-   * Throws NotFoundError if it does not exist.
-   */
-  async getOrganization(orgId: string) {
-    const orgObjectId = new Types.ObjectId(orgId);
-    const organization =
-      await this.organizationRepository.findById(orgObjectId);
+  await orgRepo.deleteOrg(org._id as Types.ObjectId);
+};
 
-    if (!organization) {
-      throw new NotFoundError("Organization not found");
-    }
+/** Add a member to an organization */
+export const addOrgMember = async (orgId: string, userId: string) => {
+  const org = await getOrganization(orgId);
+  const userObjectId = new Types.ObjectId(userId);
 
-    return organization;
+  // Check if already a member
+  const alreadyMember = org.members.some(
+    (memberId) => memberId.toString() === userId,
+  );
+  if (alreadyMember) {
+    throw new ConflictError("User is already a member of this organization");
   }
 
-  /**
-   * Build sidebar data for an organization.
-   *
-   * Fetches real channels and groups them (basic structure for now).
-   */
-  async getSidebar(orgId: string) {
-    const organization = await this.getOrganization(orgId);
-    const allChannels = await channelService.getChannelsByOrganization(orgId);
+  return orgRepo.addMember(org._id as Types.ObjectId, userObjectId);
+};
 
-    // Filter categories and channels
-    const categories = allChannels.filter((c) => c.type === "CATEGORY");
-    const channels = allChannels.filter((c) => c.type !== "CATEGORY");
+/** Remove a member from an organization */
+export const removeOrgMember = async (orgId: string, userId: string) => {
+  const org = await getOrganization(orgId);
+  const userObjectId = new Types.ObjectId(userId);
 
-    return {
-      organization,
-      categories,
-      channels,
-    };
+  // Cannot remove the first member (admin)
+  if (org.members.length > 0 && org.members[0].toString() === userId) {
+    throw new AuthorizationError("Cannot remove the organization admin");
   }
 
-  /**
-   * Delete an organization if the requesting user is the owner.
-   *
-   * - Verifies that the organization exists.
-   * - Verifies that `requestingUserId` matches `organization.ownerId`.
-   * - Delegates deletion to the repository.
-   */
-  async deleteOrganization(requestingUserId: string, orgId: string) {
-    const organization = await this.getOrganization(orgId);
-
-    if (organization.ownerId.toString() !== requestingUserId) {
-      throw new AuthorizationError(
-        "You are not allowed to delete this organization",
-      );
-    }
-
-    await this.organizationRepository.delete(organization._id);
-  }
-
-  /**
-   * Get homepage data: all organizations the user belongs to.
-   */
-  async getHomeData(userId: string) {
-    const organizations = await this.getUserOrganizations(userId);
-    return { organizations };
-  }
-}
+  return orgRepo.removeMember(org._id as Types.ObjectId, userObjectId);
+};
