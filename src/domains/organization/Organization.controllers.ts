@@ -4,16 +4,6 @@ import { catchAsync } from "../../core/middleware/async-handler";
 import { sendSuccess } from "../../core/utils/response";
 import { IAuthenticatedRequest } from "../../core/types/request.types";
 
-/**
- * Organization Controller — HTTP layer only.
- *
- * Rules:
- * - Extract validated data from req.body / req.params
- * - Delegate all logic to OrganizationService
- * - Format HTTP response via sendSuccess
- * - ZERO business logic
- * - ZERO direct database calls
- */
 export class OrganizationController {
   private organizationService: OrganizationService;
 
@@ -21,13 +11,7 @@ export class OrganizationController {
     this.organizationService = organizationService;
   }
 
-  /**
-   * POST /api/v1/organizations/register
-   * PUBLIC — no authentication required.
-   *
-   * Creates a new organization and returns its human-readable join code.
-   * The code (ORG-XXXXXX) is used by users when calling POST /api/v1/auth/register-user.
-   */
+  /** POST /api/v1/organizations/register — public registration */
   registerOrganization = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const { name, slug } = req.body;
@@ -49,10 +33,7 @@ export class OrganizationController {
     },
   );
 
-  /**
-   * POST /api/v1/organizations
-   * PROTECTED — authenticated user becomes OWNER.
-   */
+  /** POST /api/v1/organizations — authenticated user becomes OWNER */
   createOrganization = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const authReq = req as IAuthenticatedRequest;
@@ -71,6 +52,7 @@ export class OrganizationController {
     },
   );
 
+  /** GET /api/v1/organizations — list user's orgs */
   getUserOrganizations = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const authReq = req as IAuthenticatedRequest;
@@ -81,6 +63,7 @@ export class OrganizationController {
     },
   );
 
+  /** GET /api/v1/organizations/:orgId — single org */
   getOrganization = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const { orgId } = req.params;
@@ -90,6 +73,7 @@ export class OrganizationController {
     },
   );
 
+  /** GET /api/v1/organizations/:orgId/sidebar */
   getSidebar = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const { orgId } = req.params;
@@ -98,6 +82,7 @@ export class OrganizationController {
     },
   );
 
+  /** DELETE /api/v1/organizations/:orgId — admin/owner only */
   deleteOrganization = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const authReq = req as IAuthenticatedRequest;
@@ -111,6 +96,36 @@ export class OrganizationController {
     },
   );
 
+  /** POST /api/v1/organizations/:orgId/members — add member */
+  addMember = catchAsync(
+    async (req: Request, res: Response): Promise<void> => {
+      const { orgId } = req.params;
+      const { userId } = req.body;
+
+      const organization = await this.organizationService.addOrgMember(
+        orgId,
+        userId,
+      );
+
+      sendSuccess(res, { message: "Member added successfully", organization });
+    },
+  );
+
+  /** DELETE /api/v1/organizations/:orgId/members/:userId — remove member */
+  removeMember = catchAsync(
+    async (req: Request, res: Response): Promise<void> => {
+      const { orgId, userId } = req.params;
+
+      const organization = await this.organizationService.removeOrgMember(
+        orgId,
+        userId,
+      );
+
+      sendSuccess(res, { message: "Member removed successfully", organization });
+    },
+  );
+
+  /** GET /api/v1/organizations/home */
   getHomeData = catchAsync(
     async (req: Request, res: Response): Promise<void> => {
       const authReq = req as IAuthenticatedRequest;

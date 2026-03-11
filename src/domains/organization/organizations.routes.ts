@@ -30,11 +30,6 @@ const router = Router();
 // paths like /:orgId — Express matches routes in declaration order.
 // ─────────────────────────────────────────────────────
 
-/**
- * POST /register
- * Public organization registration. Returns an ORG-XXXXXX join code
- * that users supply when calling POST /api/v1/auth/register-user.
- */
 router.post(
   "/register",
   validate(orgRegistrationSchema),
@@ -79,6 +74,19 @@ router.delete(
   "/:orgId",
   authenticate as never,
   organizationController.deleteOrganization,
+);
+
+// Member management routes (from main)
+router.post(
+  "/:orgId/members",
+  authenticate as never,
+  organizationController.addMember,
+);
+
+router.delete(
+  "/:orgId/members/:userId",
+  authenticate as never,
+  organizationController.removeMember,
 );
 
 export { router as organizationRoutes };

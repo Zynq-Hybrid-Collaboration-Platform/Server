@@ -3,8 +3,8 @@ import { Types } from "mongoose";
 import { OrganizationRepository } from "./organizationRepository";
 import { MemberRepository } from "../member/memberRepository";
 import { MemberRole } from "../member/member.model";
+import { NotFoundError, AuthorizationError, ConflictError } from "../../core/errors";
 import { channelService } from "../channel/channelService";
-import { NotFoundError, AuthorizationError } from "../../core/errors";
 
 /** Character set for the org code suffix — uppercase alphanumeric only. */
 const CODE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -21,10 +21,6 @@ export class OrganizationService {
   // Authenticated flows (caller must be a logged-in user)
   // ─────────────────────────────────────────────────────
 
-  /**
-   * Create a new organization owned by the authenticated user.
-   * The caller is automatically added as OWNER in the Member collection.
-   */
   async createOrganization(
     userId: string,
     data: { name: string; slug: string },
@@ -32,7 +28,8 @@ export class OrganizationService {
     const ownerObjectId = new Types.ObjectId(userId);
 
     const org = await this.organizationRepository.create({
-      ...data,
+      name: data.name,
+      slug: data.slug,
       ownerId: ownerObjectId,
     });
 
@@ -49,18 +46,6 @@ export class OrganizationService {
   // Public flows (no authenticated user required)
   // ─────────────────────────────────────────────────────
 
-  /**
-   * Register a new organization without an authenticated user.
-   *
-   * POST /api/v1/organizations/register
-   *
-   * Steps:
-   *   1. Slugify name (or use the caller-supplied slug).
-   *   2. Ensure slug uniqueness — append a random hex suffix on collision.
-   *   3. Generate a cryptographically unique ORG-XXXXXX code.
-   *   4. Persist the organization.
-   *   5. Return the code so it can be shared with prospective members.
-   */
   async registerOrganization(data: { name: string; slug?: string }) {
     const baseSlug = data.slug ?? this.slugify(data.name);
     const finalSlug = await this.resolveUniqueSlug(baseSlug);
@@ -75,10 +60,6 @@ export class OrganizationService {
     return { organizationCode, organization };
   }
 
-  /**
-   * Look up an organization by its human-readable join code.
-   * Called by AuthService during user registration to resolve the ObjectId.
-   */
   async findByCode(code: string) {
     return this.organizationRepository.findByCode(code);
   }
@@ -112,23 +93,65 @@ export class OrganizationService {
     return { organization, categories, channels };
   }
 
-  /**
-   * Delete an organization — only the owner is allowed.
-   * Handles the case where ownerId is absent (publicly-registered orgs).
-   */
   async deleteOrganization(requestingUserId: string, orgId: string) {
     const organization = await this.getOrganization(orgId);
 
-    if (
-      !organization.ownerId ||
-      organization.ownerId.toString() !== requestingUserId
-    ) {
-      throw new AuthorizationError(
-        "You are not allowed to delete this organization",
-      );
+    // Check ownership (auth-updates model)
+    if (organization.ownerId) {
+      if (organization.ownerId.toString() !== requestingUserId) {
+        throw new AuthorizationError(
+          "You are not allowed to delete this organization",
+        );
+      }
+    } else {
+      // Fallback: first member in the array is the admin (main model)
+      const isAdmin =
+        organization.members.length > 0 &&
+        organization.members[0].toString() === requestingUserId;
+
+      if (!isAdmin) {
+        throw new AuthorizationError(
+          "Only the organization admin can delete this organization",
+        );
+      }
     }
 
-    await this.organizationRepository.delete(organization._id);
+    await this.organizationRepository.delete(organization._id as Types.ObjectId);
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Member management (from main)
+  // ─────────────────────────────────────────────────────
+
+  async addOrgMember(orgId: string, userId: string) {
+    const org = await this.getOrganization(orgId);
+    const userObjectId = new Types.ObjectId(userId);
+
+    const alreadyMember = org.members.some(
+      (memberId) => memberId.toString() === userId,
+    );
+    if (alreadyMember) {
+      throw new ConflictError("User is already a member of this organization");
+    }
+
+    return this.organizationRepository.addMember(
+      org._id as Types.ObjectId,
+      userObjectId,
+    );
+  }
+
+  async removeOrgMember(orgId: string, userId: string) {
+    const org = await this.getOrganization(orgId);
+    const userObjectId = new Types.ObjectId(userId);
+
+    if (org.members.length > 0 && org.members[0].toString() === userId) {
+      throw new AuthorizationError("Cannot remove the organization admin");
+    }
+
+    return this.organizationRepository.removeMember(
+      org._id as Types.ObjectId,
+      userObjectId,
+    );
   }
 
   async getHomeData(userId: string) {
@@ -140,7 +163,6 @@ export class OrganizationService {
   // Private helpers
   // ─────────────────────────────────────────────────────
 
-  /** Convert an arbitrary display name into a URL-safe slug. */
   private slugify(name: string): string {
     return name
       .toLowerCase()
@@ -149,27 +171,14 @@ export class OrganizationService {
       .replace(/^-+|-+$/g, "");
   }
 
-  /**
-   * Return baseSlug if it is free, otherwise append a 6-char random hex suffix.
-   * One retry is sufficient — the suffix space (16^6 ≈ 16 M) makes a second
-   * collision astronomically unlikely.
-   */
   private async resolveUniqueSlug(baseSlug: string): Promise<string> {
     const taken = await this.organizationRepository.slugExists(baseSlug);
     if (!taken) return baseSlug;
 
-    const suffix = crypto.randomBytes(3).toString("hex"); // e.g. "a3f9c1"
+    const suffix = crypto.randomBytes(3).toString("hex");
     return `${baseSlug}-${suffix}`;
   }
 
-  /**
-   * Generate a globally-unique ORG-XXXXXX code using cryptographically
-   * secure random bytes. Retries up to MAX_CODE_ATTEMPTS on collision.
-   *
-   * Uses modulo mapping from random bytes → CODE_CHARS to avoid modulo bias
-   * as much as a 36-char alphabet allows (each byte maps to 7 chars with
-   * ~1 % bias — acceptable for a non-secret join code).
-   */
   private async generateUniqueCode(): Promise<string> {
     for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
       const bytes = crypto.randomBytes(6);

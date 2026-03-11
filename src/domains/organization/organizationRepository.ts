@@ -19,13 +19,21 @@ export class OrganizationRepository {
     return Organization.findOne({ slug });
   }
 
+  async findByName(name: string) {
+    return Organization.findOne({ name });
+  }
+
   async findByOwner(ownerId: Types.ObjectId) {
     return Organization.find({ ownerId });
   }
 
+  async findByMember(userId: Types.ObjectId) {
+    return Organization.find({ members: userId });
+  }
+
   async update(
     orgId: Types.ObjectId,
-    updateData: Partial<{ name: string; slug: string }>,
+    updateData: Partial<{ name: string; slug: string; roles: string[] }>,
   ) {
     return Organization.findByIdAndUpdate(orgId, updateData, { new: true });
   }
@@ -38,15 +46,49 @@ export class OrganizationRepository {
     return Organization.exists({ slug }).then(Boolean);
   }
 
-  // ── New: organization code lookups ──────────────────────────────
-
-  /** Find an organization by its human-readable join code (ORG-XXXXXX). */
   async findByCode(code: string) {
     return Organization.findOne({ organizationCode: code });
   }
 
-  /** Returns true if the code is already taken. Uses indexed exists() query. */
   async codeExists(code: string): Promise<boolean> {
     return Organization.exists({ organizationCode: code }).then(Boolean);
+  }
+
+  async addMember(
+    orgId: Types.ObjectId,
+    userId: Types.ObjectId,
+  ) {
+    return Organization.findByIdAndUpdate(
+      orgId,
+      { $addToSet: { members: userId } },
+      { new: true },
+    );
+  }
+
+  async removeMember(
+    orgId: Types.ObjectId,
+    userId: Types.ObjectId,
+  ) {
+    return Organization.findByIdAndUpdate(
+      orgId,
+      { $pull: { members: userId } },
+      { new: true },
+    );
+  }
+
+  async addRole(orgId: Types.ObjectId, role: string) {
+    return Organization.findByIdAndUpdate(
+      orgId,
+      { $addToSet: { roles: role } },
+      { new: true },
+    );
+  }
+
+  async removeRole(orgId: Types.ObjectId, role: string) {
+    return Organization.findByIdAndUpdate(
+      orgId,
+      { $pull: { roles: role } },
+      { new: true },
+    );
   }
 }
