@@ -78,7 +78,9 @@ const userSchema = new Schema<IUserDocument>(
     },
     password: {
       type: String,
-      required: true,
+      required: function(this: any) {
+        return !this.googleId;
+      },
       select: false,
     },
     avatar: {
@@ -110,15 +112,18 @@ const userSchema = new Schema<IUserDocument>(
       type: Date,
       select: false,
     },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
   },
   {
     timestamps: true,
   },
 );
 
-// ─────────────────────────────────────────────────────────
-// Indexes
-// ─────────────────────────────────────────────────────────
+// Plugins and Hooks
 
 /** Fast lookup by org membership */
 userSchema.index({ "organizations.orgId": 1 });
@@ -126,7 +131,7 @@ userSchema.index({ "organizations.orgId": 1 });
 /** Fast lookup by workspace membership */
 userSchema.index({ "workspaces.workspaceId": 1 });
 
-/** Sparse index — only documents with a reset token are indexed */
+// Sparse index for reset tokens
 userSchema.index({ resetPasswordToken: 1 }, { sparse: true });
 
 export const UserModel = mongoose.model<IUserDocument>("User", userSchema);

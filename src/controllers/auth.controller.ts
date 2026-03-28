@@ -39,23 +39,10 @@ const ACCESS_COOKIE_OPTIONS = {
   sameSite: "lax" as const,
 };
 
-// ─────────────────────────────────────────────────────
 // Private Helpers
-// ─────────────────────────────────────────────────────
 
-function generateTokenPair(
-  userId: string,
-  organizations: Array<{ orgId: { toString(): string }; role: string }>
-): IAuthTokens {
-  const accessOptions: SignOptions = {
-    expiresIn: config.JWT_ACCESS_EXPIRES as SignOptions["expiresIn"],
-    algorithm: "HS256",
-  };
-  const refreshOptions: SignOptions = {
-    expiresIn: config.JWT_REFRESH_EXPIRES as SignOptions["expiresIn"],
-    algorithm: "HS256",
-  };
-
+// Create JWT access and refresh tokens
+function generateTokenPair(userId: string, organizations: any[]): IAuthTokens {
   const orgs = organizations.map((o) => ({
     orgId: o.orgId.toString(),
     role: o.role,
@@ -64,13 +51,13 @@ function generateTokenPair(
   const accessToken = jwt.sign(
     { id: userId, organizations: orgs },
     config.JWT_ACCESS_SECRET,
-    accessOptions
+    { expiresIn: config.JWT_ACCESS_EXPIRES as any, algorithm: "HS256" }
   );
 
   const refreshToken = jwt.sign(
     { id: userId },
     config.JWT_REFRESH_SECRET,
-    refreshOptions
+    { expiresIn: config.JWT_REFRESH_EXPIRES as any, algorithm: "HS256" }
   );
 
   return { accessToken, refreshToken };
@@ -80,9 +67,8 @@ function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
-function sanitizeUser(
-  user: IUserLean | { _id: { toString(): string }; name: string; email: string; username: string; avatar: string; status: string; organizations: Array<{ orgId: { toString(): string }; role: string; joinedAt: Date }>; workspaces: Array<{ workspaceId: { toString(): string }; name: string; joinedAt: Date }> }
-): IUserSafe {
+// Remove sensitive fields from user object
+function sanitizeUser(user: any): IUserSafe {
   return {
     id: user._id.toString(),
     name: user.name,
@@ -90,12 +76,12 @@ function sanitizeUser(
     username: user.username,
     avatar: user.avatar,
     status: user.status,
-    organizations: (user.organizations || []).map((o) => ({
+    organizations: (user.organizations || []).map((o: any) => ({
       orgId: o.orgId.toString(),
       role: o.role,
       joinedAt: o.joinedAt.toISOString(),
     })),
-    workspaces: (user.workspaces || []).map((w) => ({
+    workspaces: (user.workspaces || []).map((w: any) => ({
       workspaceId: w.workspaceId.toString(),
       name: w.name,
       joinedAt: w.joinedAt.toISOString(),
@@ -103,15 +89,11 @@ function sanitizeUser(
   };
 }
 
-const findById = (userId: string) =>
-  UserModel.findById(userId).lean<IUserLean>();
+// Helpers
+const findUser = (id: string) => UserModel.findById(id).lean();
+const findOrg = (id: string) => Organization.findById(id).lean();
 
-const findOrgById = (orgId: string) =>
-  Organization.findById(orgId).lean<IOrganization>();
-
-// ─────────────────────────────────────────────────────
-// HTTP Handlers (Controllers + DB Logic)
-// ─────────────────────────────────────────────────────
+// HTTP Handlers
 
 export const register = catchAsync(async (req: Request, res: Response): Promise<void> => {
   const { name, email, password, username } = req.body;
@@ -161,6 +143,7 @@ export const login = catchAsync(async (req: Request, res: Response): Promise<voi
   const user = await UserModel.findOne({ email }).select("+password").lean<IUserLean>();
 
   if (!user) throw new AuthenticationError("Invalid email or password");
+  if (!user.password) throw new AuthenticationError("This account uses Google login. Please sign in with Google.");
 
   const isPasswordValid = await bcrypt.compare(password, user.password);
   if (!isPasswordValid) throw new AuthenticationError("Invalid email or password");
@@ -293,6 +276,7 @@ export const changePassword = catchAsync(async (req: Request, res: Response): Pr
 
   const user = await UserModel.findById(userId).select("+password").lean<IUserLean>();
   if (!user) throw new NotFoundError("User");
+  if (!user.password) throw new AuthenticationError("This account uses Google login. You cannot change your password here.");
 
   const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
   if (!isCurrentValid) throw new AuthenticationError("Current password does not match");
@@ -366,12 +350,12 @@ export const getMe = catchAsync(async (req: Request, res: Response): Promise<voi
   const userId = authReq.user.userId;
 
   let userSafe: any = null;
-  const user = await findById(userId);
+  const user = await findUser(userId);
   
   if (user) {
     userSafe = sanitizeUser(user);
   } else {
-    const org = await findOrgById(userId);
+    const org = await findOrg(userId);
     if (org) {
       const workspaces = await Workspace.find({ orgId: org._id });
       const orgIdStr = org._id.toString();
@@ -408,14 +392,12 @@ export const getMe = catchAsync(async (req: Request, res: Response): Promise<voi
   sendSuccess(res, { user: userSafe });
 });
 
-// ─────────────────────────────────────────────────────
-// Exported Methods for Cross-Controller Usage
-// ─────────────────────────────────────────────────────
+// Exported Methods
 
 export const addOrganizationToUser = async (userId: string, orgId: string, role: string): Promise<void> => {
-  const user = await findById(userId);
+  const user = await findUser(userId);
   if (user) {
-    if (user.organizations.some(o => o.orgId.toString() === orgId)) return;
+    if ((user.organizations as any).some((o: any) => o.orgId.toString() === orgId)) return;
     await UserModel.findByIdAndUpdate(userId, {
       $push: { organizations: { orgId, role, joinedAt: new Date() } },
     });
@@ -423,7 +405,7 @@ export const addOrganizationToUser = async (userId: string, orgId: string, role:
     return;
   }
 
-  const org = await findOrgById(userId);
+  const org = await findOrg(userId);
   if (org) {
     logger.info("Organization invite used by organization founder", { orgId: userId, targetOrgId: orgId });
     return;
@@ -433,7 +415,7 @@ export const addOrganizationToUser = async (userId: string, orgId: string, role:
 };
 
 export const addWorkspaceToUser = async (userId: string, workspaceId: string, name: string): Promise<void> => {
-  const user = await findById(userId);
+  const user = await findUser(userId);
   if (user) {
     if (user.workspaces?.some(w => w.workspaceId.toString() === workspaceId)) return;
     await UserModel.findByIdAndUpdate(userId, {
@@ -443,7 +425,7 @@ export const addWorkspaceToUser = async (userId: string, workspaceId: string, na
     return;
   }
 
-  const org = await findOrgById(userId);
+  const org = await findOrg(userId);
   if (org) return;
 
   throw new NotFoundError("User or Organization");
@@ -455,6 +437,31 @@ export const removeWorkspaceFromUser = async (userId: string, workspaceId: strin
   });
 };
 
-export const deleteChannelsByWorkspace = async (workspaceId: string): Promise<any> => {
-  // Provided for convenience if channel functions aren't cross-calling
-};
+export const googleCallback = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  const user = (req as any).user;
+  if (!user) throw new AuthenticationError("Google authentication failed");
+
+  const tokens = generateTokenPair(user._id.toString(), user.organizations);
+
+  const hashedRefresh = hashToken(tokens.refreshToken);
+  await UserModel.findByIdAndUpdate(user._id, { refreshToken: hashedRefresh });
+
+  logger.info("User logged in via Google", { userId: user._id });
+
+  res.cookie("refreshToken", tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
+  res.cookie("accessToken", tokens.accessToken, ACCESS_COOKIE_OPTIONS);
+
+  // Redirect to frontend (dashboard or join page)
+  const isFounder = user.organizations?.some((org: any) => org.orgId.toString() === user._id.toString() && org.role === "admin");
+  let redirectUrl = config.FRONTEND_URL;
+
+  if (user.workspaces && user.workspaces.length > 0) {
+    redirectUrl = `${config.FRONTEND_URL}/workspace/${user.workspaces[0].workspaceId}`;
+  } else if (isFounder) {
+    redirectUrl = `${config.FRONTEND_URL}/workspace/setup`;
+  } else {
+    redirectUrl = `${config.FRONTEND_URL}/workspace/join`;
+  }
+
+  res.redirect(redirectUrl);
+});

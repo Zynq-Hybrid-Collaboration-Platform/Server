@@ -19,7 +19,8 @@ export interface IUserDocument extends Document {
   name: string;
   email: string;
   username: string;
-  password: string;
+  password?: string;
+  googleId?: string;
   avatar: string;
   status: "online" | "offline" | "idle";
   organizations: IOrganizationMembership[];
@@ -42,6 +43,7 @@ export type IUserLean = Pick<
   | "email"
   | "username"
   | "password"
+  | "googleId"
   | "avatar"
   | "status"
   | "organizations"

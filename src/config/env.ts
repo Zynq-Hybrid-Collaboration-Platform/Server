@@ -56,6 +56,7 @@ export const config = {
 
   // ── OAuth (optional — only needed when Google login is enabled) ──
   GOOGLE_CLIENT_ID: optionalEnv("GOOGLE_CLIENT_ID", ""),
+  GOOGLE_CLIENT_SECRET: optionalEnv("GOOGLE_CLIENT_SECRET", ""),
 
   // ── SMTP / Email ─────────────────────────────────────
   // When SMTP_ENABLED is false (default), the email service
