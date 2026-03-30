@@ -3,44 +3,31 @@ import helmet from "helmet";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { globalErrorHandler } from "./middleware/error-handler";
+import passport from "./config/passport";
 import { registerRoutes } from "./routes";
 import { config } from "./config/env";
 import { logger } from "./logger/logger";
 
-/**
- * Express application factory.
- *
- * Creates and configures the Express app with:
- * - Security headers (helmet)
- * - CORS (configured for frontend origin)
- * - Body parsing (JSON + URL-encoded)
- * - Cookie parsing (for httpOnly token cookies)
- * - Health check endpoint
- * - All domain routes (via registerRoutes)
- * - 404 handler
- * - Global error handler
- *
- * Separated from server.ts for testability — you can import createApp()
- * in tests without starting an HTTP server.
- */
+// Express application factory
 export function createApp(): Application {
   const app = express();
 
-  // --- Security ---
+  // Security & CORS
   app.use(helmet());
   app.use(
     cors({
-      origin: "http://localhost:3001",
+      origin: config.FRONTEND_URL,
       credentials: true,
     }),
   );
 
-  // --- Body Parsing ---
+  // Body & Cookie Parsing
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true }));
   app.use(cookieParser());
+  app.use(passport.initialize());
 
-  // --- Request Logging (dev only) ---
+  // Request Logging (dev)
   if (config.isDevelopment()) {
     app.use((req, _res, next) => {
       logger.debug(`${req.method} ${req.path}`);
@@ -48,7 +35,7 @@ export function createApp(): Application {
     });
   }
 
-  // --- Health Check (no auth, no tenant — always accessible) ---
+  // Health Check
   app.get("/health", (_req, res) => {
     res.status(200).json({
       success: true,
@@ -64,18 +51,18 @@ export function createApp(): Application {
 
   registerRoutes(app);
 
-  // --- 404 Handler (after all routes) ---
+  // 404 Handler
   app.use((_req, res) => {
     res.status(404).json({
       success: false,
       error: {
         code: "NOT_FOUND",
-        message: "The requested endpoint does not exis just typed now t",
+        message: "The requested endpoint does not exist",
       },
     });
   });
 
-  // --- Global Error Handler (MUST be last middleware) ---
+  // Global Error Handler
   app.use(globalErrorHandler);
 
   return app;
