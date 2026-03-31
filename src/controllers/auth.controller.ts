@@ -67,7 +67,6 @@ function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
-// Remove sensitive fields from user object
 function sanitizeUser(user: any): IUserSafe {
   return {
     id: user._id.toString(),
@@ -255,7 +254,7 @@ export const refresh = catchAsync(async (req: Request, res: Response): Promise<v
 
 export const logout = catchAsync(async (req: Request, res: Response): Promise<void> => {
   const authReq = req as IAuthenticatedRequest;
-  
+
   await UserModel.findByIdAndUpdate(authReq.user.userId, { refreshToken: null });
   logger.info("User logged out", { userId: authReq.user.userId });
 
@@ -333,8 +332,8 @@ export const resetPassword = catchAsync(async (req: Request, res: Response): Pro
   if (!user) throw new AuthenticationError("Invalid or expired reset token");
 
   const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
-  
-  await UserModel.findByIdAndUpdate(user._id, { 
+
+  await UserModel.findByIdAndUpdate(user._id, {
     password: hashedPassword,
     refreshToken: null,
     $unset: { resetPasswordToken: 1, resetPasswordExpires: 1 }
@@ -351,7 +350,7 @@ export const getMe = catchAsync(async (req: Request, res: Response): Promise<voi
 
   let userSafe: any = null;
   const user = await findUser(userId);
-  
+
   if (user) {
     userSafe = sanitizeUser(user);
   } else {
@@ -368,9 +367,9 @@ export const getMe = catchAsync(async (req: Request, res: Response): Promise<voi
         avatar: "",
         status: "online",
         organizations: [{
-            orgId: orgIdStr,
-            role: "admin",
-            joinedAt: (org.createdAt || new Date()).toISOString(),
+          orgId: orgIdStr,
+          role: "admin",
+          joinedAt: (org.createdAt || new Date()).toISOString(),
         }],
         workspaces: workspaces.map(w => ({
           workspaceId: w._id.toString(),
