@@ -4,6 +4,7 @@ import { organizationRoutes } from "./organization.routes";
 import { channelRoutes } from "./channel.routes";
 import { inviteRoutes } from "./invite.routes";
 import { workspaceRoutes } from "./workspace.routes";
+import { messageRoutes } from "./message.routes";
 
 const API_V1 = "/api/v1";
 
@@ -13,4 +14,5 @@ export function registerRoutes(app: Application): void {
   app.use(`${API_V1}/channels`, channelRoutes);
   app.use(`${API_V1}/invites`, inviteRoutes);
   app.use(`${API_V1}/workspaces`, workspaceRoutes);
+  app.use(`${API_V1}/messages`, messageRoutes);
 }

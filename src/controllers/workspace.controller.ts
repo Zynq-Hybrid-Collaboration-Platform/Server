@@ -42,7 +42,6 @@ export const getWorkspaceByIdController = async (req: Request, res: Response, ne
     const { workspaceId } = req.params;
     const workspace = await Workspace.findById(new Types.ObjectId(workspaceId));
     if (!workspace) throw new NotFoundError("Workspace not found");
-    
     res.status(200).json({ success: true, data: workspace });
   } catch (error) {
     next(error);
