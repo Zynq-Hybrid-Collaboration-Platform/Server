@@ -11,6 +11,7 @@ export interface IMessage extends Document {
     channelId: mongoose.Types.ObjectId;
     content: string;
     type: MessageType;
+    isEdited: boolean;
     attachments: {
         url: string;
         name: string;
@@ -34,8 +35,12 @@ const messageSchema = new Schema<IMessage>(
         },
         content: {
             type: String,
-            required: true,
             trim: true,
+            default: "",
+        },
+        isEdited: {
+            type: Boolean,
+            default: false,
         },
         type: {
             type: String,
