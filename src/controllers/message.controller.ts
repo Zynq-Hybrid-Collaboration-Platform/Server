@@ -3,7 +3,9 @@ import { Message } from "../models/message.model";
 import { catchAsync } from "../middleware/async-handler";
 import { sendSuccess } from "../utils/response";
 import { NotFoundError } from "../errors/NotFoundError";
+import { ForbiddenError } from "../errors/ForbiddenError";
 import { Types } from "mongoose";
+import { uploadToCloudinary } from "../middleware/upload.middleware";
 
 // Get messages for a channel with pagination
 export const getMessages = catchAsync(async (req: Request, res: Response) => {
@@ -41,4 +43,64 @@ export const createMessage = catchAsync(async (req: Request, res: Response) => {
     const populatedMessage = await Message.findById(message._id).populate("senderId", "name avatar");
 
     sendSuccess(res, { message: populatedMessage }, 201);
+});
+
+// Update (edit) a message — only the sender can edit
+export const updateMessage = catchAsync(async (req: Request, res: Response) => {
+    const { messageId } = req.params;
+    const { content } = req.body;
+    const user = (req as any).user;
+
+    const message = await Message.findById(messageId);
+    if (!message) throw new NotFoundError("Message");
+
+    if (message.senderId.toString() !== user.userId) {
+        throw new ForbiddenError();
+    }
+
+    message.content = content;
+    message.isEdited = true;
+    await message.save();
+
+    const populatedMessage = await Message.findById(message._id).populate("senderId", "name avatar");
+
+    sendSuccess(res, { message: populatedMessage });
+});
+
+// Delete a message — only the sender can delete
+export const deleteMessage = catchAsync(async (req: Request, res: Response) => {
+    const { messageId } = req.params;
+    const user = (req as any).user;
+
+    const message = await Message.findById(messageId);
+    if (!message) throw new NotFoundError("Message");
+
+    if (message.senderId.toString() !== user.userId) {
+        throw new ForbiddenError();
+    }
+
+    await Message.findByIdAndDelete(messageId);
+
+    sendSuccess(res, { messageId });
+});
+
+// Upload media to Cloudinary
+export const uploadMedia = catchAsync(async (req: Request, res: Response) => {
+    if (!req.file) {
+        return sendSuccess(res, { error: "No file provided" }, 400);
+    }
+
+    const { url, publicId, fileType } = await uploadToCloudinary(
+        req.file.buffer,
+        "synq-uploads"
+    );
+
+    sendSuccess(res, {
+        attachment: {
+            url,
+            name: req.file.originalname,
+            fileType: req.file.mimetype,
+            publicId,
+        },
+    }, 201);
 });

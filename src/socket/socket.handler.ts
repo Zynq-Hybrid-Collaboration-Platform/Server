@@ -95,6 +95,44 @@ export const setupSocketHandlers = (io: Server) => {
             }
         });
 
+        // Edit Message
+        socket.on("edit-message", async (data: { messageId: string; channelId: string; content: string }) => {
+            const { messageId, channelId, content } = data;
+
+            try {
+                const message = await Message.findById(messageId);
+                if (!message) return socket.emit("error", { message: "Message not found" });
+                if (message.senderId.toString() !== user.userId) return socket.emit("error", { message: "Unauthorized" });
+
+                message.content = content;
+                message.isEdited = true;
+                await message.save();
+
+                const populatedMessage = await Message.findById(message._id).populate("senderId", "name avatar");
+                io.to(channelId).emit("message-edited", populatedMessage);
+            } catch (error) {
+                console.error("Error editing message:", error);
+                socket.emit("error", { message: "Failed to edit message" });
+            }
+        });
+
+        // Delete Message
+        socket.on("delete-message", async (data: { messageId: string; channelId: string }) => {
+            const { messageId, channelId } = data;
+
+            try {
+                const message = await Message.findById(messageId);
+                if (!message) return socket.emit("error", { message: "Message not found" });
+                if (message.senderId.toString() !== user.userId) return socket.emit("error", { message: "Unauthorized" });
+
+                await Message.findByIdAndDelete(messageId);
+                io.to(channelId).emit("message-deleted", { messageId, channelId });
+            } catch (error) {
+                console.error("Error deleting message:", error);
+                socket.emit("error", { message: "Failed to delete message" });
+            }
+        });
+
         // Typing indicator
         socket.on("typing", (data: { channelId: string; isTyping: boolean }) => {
             socket.to(data.channelId).emit("user-typing", {

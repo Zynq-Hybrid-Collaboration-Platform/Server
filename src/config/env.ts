@@ -73,6 +73,11 @@ export const config = {
   // ── Frontend / CORS ──────────────────────────────────
   FRONTEND_URL: optionalEnv("FRONTEND_URL", "http://localhost:3001"),
 
+  // ── Cloudinary ────────────────────────────────────────
+  CLOUDINARY_CLOUD_NAME: optionalEnv("CLOUDINARY_CLOUD_NAME", ""),
+  CLOUDINARY_API_KEY: optionalEnv("CLOUDINARY_API_KEY", ""),
+  CLOUDINARY_API_SECRET: optionalEnv("CLOUDINARY_API_SECRET", ""),
+
   // ── Environment Predicates ───────────────────────────
 
   isDevelopment(): boolean {
