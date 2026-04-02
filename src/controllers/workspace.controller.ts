@@ -4,6 +4,7 @@ import Workspace from "../models/workspace.model";
 import { NotFoundError } from "../errors";
 import * as authController from "./auth.controller";
 import * as channelController from "./channel.controller";
+import { Channel, ChannelType } from "../models/channel.model";
 
 export const createWorkspaceController = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -23,6 +24,14 @@ export const createWorkspaceController = async (req: Request, res: Response, nex
       orgId: new Types.ObjectId(effectiveOrgId as string),
       name,
       members: [{ userId: new Types.ObjectId(authReq.user.userId) }],
+    });
+
+    await Channel.create({
+      name: "general",
+      type: ChannelType.TEXT,
+      workspaceId: workspace._id,
+      parentId: null,
+      allowedRoles: [],
     });
 
     await authController.addWorkspaceToUser(

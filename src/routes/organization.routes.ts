@@ -13,8 +13,10 @@ router.get("/", authenticate as never, orgController.getUserOrganizations);
 router.get("/:orgId", authenticate as never, orgController.getOrganization);
 router.delete("/:orgId", authenticate as never, orgController.deleteOrganization);
 
+router.get("/:orgId/members", authenticate as never, orgController.getOrganizationMembers);
 router.post("/:orgId/members", authenticate as never, orgController.addMember);
 router.delete("/:orgId/members/:userId", authenticate as never, orgController.removeMember);
+router.put("/:orgId/members/:userId/role", authenticate as never, orgController.updateMemberRole);
 
 router.get("/:orgId/roles", orgController.getOrgRoles);
 router.post("/:orgId/roles", authenticate as never, validate(addRoleSchema), orgController.addOrgRole);

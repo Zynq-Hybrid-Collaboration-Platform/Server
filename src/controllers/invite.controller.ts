@@ -116,7 +116,7 @@ export const deleteInvite = catchAsync(async (req: Request, res: Response): Prom
 
 export const joinWorkspace = catchAsync(async (req: Request, res: Response): Promise<void> => {
   const authReq = req as IAuthenticatedRequest;
-  const { inviteCode, role } = req.body;
+  const { inviteCode } = req.body;
   const userId = authReq.user.userId;
 
   const invite = await InviteCode.findOne({ code: inviteCode, isActive: true });
@@ -132,8 +132,10 @@ export const joinWorkspace = catchAsync(async (req: Request, res: Response): Pro
   if (!org) throw new NotFoundError("Organization not found");
   if (!workspace) throw new NotFoundError("Workspace not found");
 
+  const role = "member";
+
   if (!org.roles.includes(role)) {
-    throw new ValidationError(`Role "${role}" is not available. Available roles: ${org.roles.join(", ")}`);
+    await Organization.findByIdAndUpdate(org._id, { $addToSet: { roles: role } });
   }
 
   await authController.addOrganizationToUser(userId, org._id.toString(), role);
