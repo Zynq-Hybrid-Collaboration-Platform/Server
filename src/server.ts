@@ -5,6 +5,7 @@ import { config } from "./config/env";
 import { logger } from "./logger/logger";
 import { Server } from "socket.io";
 import { setupSocketHandlers } from "./socket/socket.handler";
+import { setupWebRTCHandlers } from "./socket/webrtc.handler";
 
 /**
  * Server bootstrap.
@@ -34,6 +35,7 @@ async function bootstrap(): Promise<void> {
 
   // Setup Socket handlers
   setupSocketHandlers(io);
+  setupWebRTCHandlers(io);
 
   // 4. Start listening
   httpServer.listen(config.PORT, () => {
