@@ -23,10 +23,8 @@ export const joinRoom = (roomId: string, participant: Participant): Participant[
     if (!rooms.has(roomId)) {
         rooms.set(roomId, { id: roomId, participants: new Map() });
     }
-
     const room = rooms.get(roomId)!;
     room.participants.set(participant.socketId, participant);
-
     // Return current list of participants (excluding the joiner)
     return Array.from(room.participants.values()).filter(p => p.socketId !== participant.socketId);
 };
@@ -44,20 +42,16 @@ export const leaveRoom = (roomId: string, socketId: string): Participant | null 
     if (room.participants.size === 0) {
         rooms.delete(roomId);
     }
-
     return participant;
 };
-
 /**
  * Updates media state for a participant.
  */
 export const updateMediaState = (roomId: string, socketId: string, updates: Partial<Participant>): Participant | null => {
     const room = rooms.get(roomId);
     if (!room) return null;
-
     const participant = room.participants.get(socketId);
     if (!participant) return null;
-
     Object.assign(participant, updates);
     return participant;
 };
@@ -81,7 +75,6 @@ export const getParticipants = (roomId: string): Participant[] => {
     const room = rooms.get(roomId);
     return room ? Array.from(room.participants.values()) : [];
 };
-
 // For backward compatibility with existing code that uses callManager.method()
 export const callManager = {
     joinRoom,

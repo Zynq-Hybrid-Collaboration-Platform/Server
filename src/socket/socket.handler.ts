@@ -15,7 +15,6 @@ export const setupSocketHandlers = (io: Server) => {
         // Log handshake details for debugging
         console.log("Socket Handshake Auth:", socket.handshake.auth);
         console.log("Socket Handshake Headers Auth:", socket.handshake.headers.authorization);
-
         const authHeader = socket.handshake.headers.authorization;
         let token = socket.handshake.auth?.token;
 
@@ -84,7 +83,6 @@ export const setupSocketHandlers = (io: Server) => {
                     type: type || "TEXT",
                     attachments: attachments || [],
                 });
-
                 const populatedMessage = await Message.findById(message._id).populate("senderId", "name avatar");
 
                 // Broadcast to everyone in the room (including sender if needed, but usually sender handles local state)
