@@ -15,7 +15,7 @@ export const setupSocketHandlers = (io: Server) => {
         // Log handshake details for debugging
         console.log("Socket Handshake Auth:", socket.handshake.auth);
         console.log("Socket Handshake Headers Auth:", socket.handshake.headers.authorization);
-        
+
         const authHeader = socket.handshake.headers.authorization;
         let token = socket.handshake.auth?.token;
 
@@ -30,7 +30,7 @@ export const setupSocketHandlers = (io: Server) => {
         if (!token) {
             token = socket.handshake.headers.cookie?.split('accessToken=')[1]?.split(';')[0];
         }
-        
+
         if (!token) {
             console.error("Socket Auth Error: No token provided in handshake.auth, authorization header, or cookies.");
             return next(new Error("Authentication error: No token provided"));
@@ -40,7 +40,7 @@ export const setupSocketHandlers = (io: Server) => {
             const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET, {
                 algorithms: ["HS256"],
             }) as any;
-            
+
             (socket as any).user = {
                 userId: decoded.id,
                 organizations: decoded.organizations || []
@@ -143,11 +143,11 @@ export const setupSocketHandlers = (io: Server) => {
 
         // --- Video Calling & Screen Sharing (WebRTC Signaling) ---
 
-        // Join Video/Voice Room
+        // Join Video
         socket.on("video:join", (data: { channelId: string }) => {
             const { channelId } = data;
             socket.join(`video-${channelId}`);
-            
+
             // Notify others in the video room
             socket.to(`video-${channelId}`).emit("video:user-joined", {
                 userId: user.userId,
@@ -174,10 +174,8 @@ export const setupSocketHandlers = (io: Server) => {
                 socketId: socket.id
             });
         });
-
         socket.on("disconnect", () => {
             console.log(`User disconnected: ${user.userId}`);
-            // Clean up could be added here to notify video rooms if user was in one
         });
     });
 };
