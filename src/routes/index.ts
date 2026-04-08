@@ -6,6 +6,7 @@ import { inviteRoutes } from "./invite.routes";
 import { workspaceRoutes } from "./workspace.routes";
 import { messageRoutes } from "./message.routes";
 import { userRoutes } from "./user.routes";
+import { taskRoutes } from "./task.routes";
 const API_V1 = "/api/v1";
 
 export function registerRoutes(app: Application): void {
@@ -16,4 +17,5 @@ export function registerRoutes(app: Application): void {
   app.use(`${API_V1}/workspaces`, workspaceRoutes);
   app.use(`${API_V1}/messages`, messageRoutes);
   app.use(`${API_V1}/users`, userRoutes);
+  app.use(`${API_V1}/tasks`, taskRoutes);
 }
