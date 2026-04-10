@@ -66,23 +66,17 @@ export const createTask = catchAsync(
       req.body;
     const user = (req as any).user;
 
-    // 1. Verify the channel exists and is of type TASKS
+    // 1. Verify the channel exists
     const channel = await Channel.findById(channelId);
     if (!channel) throw new NotFoundError("Channel");
 
-    if (channel.type !== ChannelType.TASKS) {
-      throw new ValidationError(
-        "Tasks can only be created in channels of type TASKS",
-      );
-    }
-
-    // 2. Verify the user is an admin of the org that owns the workspace
+    // 2. Verify the user is an admin or owner of the org that owns the workspace
     const { workspace, membership } = await resolveOrgRole(
       user,
       channel.workspaceId,
     );
-    if (!membership || membership.role !== "admin") {
-      throw new AuthorizationError("Only organization admins can create tasks");
+    if (!membership || !["admin", "owner"].includes(membership.role)) {
+      throw new AuthorizationError("Only organization admins or owners can create tasks");
     }
 
     // 3. Validate assignees are workspace members
@@ -258,10 +252,10 @@ export const updateTask = catchAsync(
     const task = await Task.findById(taskId);
     if (!task) throw new NotFoundError("Task");
 
-    // Verify admin role
+    // Verify admin or owner role
     const { membership } = await resolveOrgRole(user, task.workspaceId);
-    if (!membership || membership.role !== "admin") {
-      throw new AuthorizationError("Only organization admins can update tasks");
+    if (!membership || !["admin", "owner"].includes(membership.role)) {
+      throw new AuthorizationError("Only organization admins or owners can update tasks");
     }
 
     const { title, description, priority, dueDate } = req.body;
@@ -294,10 +288,10 @@ export const deleteTask = catchAsync(
     const task = await Task.findById(taskId);
     if (!task) throw new NotFoundError("Task");
 
-    // Verify admin role
+    // Verify admin or owner role
     const { membership } = await resolveOrgRole(user, task.workspaceId);
-    if (!membership || membership.role !== "admin") {
-      throw new AuthorizationError("Only organization admins can delete tasks");
+    if (!membership || !["admin", "owner"].includes(membership.role)) {
+      throw new AuthorizationError("Only organization admins or owners can delete tasks");
     }
 
     await Task.findByIdAndDelete(taskId);
@@ -319,11 +313,11 @@ export const assignTask = catchAsync(
     const task = await Task.findById(taskId);
     if (!task) throw new NotFoundError("Task");
 
-    // Verify admin role
+    // Verify admin or owner role
     const { membership } = await resolveOrgRole(user, task.workspaceId);
-    if (!membership || membership.role !== "admin") {
+    if (!membership || !["admin", "owner"].includes(membership.role)) {
       throw new AuthorizationError(
-        "Only organization admins can assign tasks",
+        "Only organization admins or owners can assign tasks",
       );
     }
 
@@ -365,11 +359,11 @@ export const unassignTask = catchAsync(
     const task = await Task.findById(taskId);
     if (!task) throw new NotFoundError("Task");
 
-    // Verify admin role
+    // Verify admin or owner role
     const { membership } = await resolveOrgRole(user, task.workspaceId);
-    if (!membership || membership.role !== "admin") {
+    if (!membership || !["admin", "owner"].includes(membership.role)) {
       throw new AuthorizationError(
-        "Only organization admins can unassign tasks",
+        "Only organization admins or owners can unassign tasks",
       );
     }
 
@@ -404,16 +398,16 @@ export const updateTaskStatus = catchAsync(
     const task = await Task.findById(taskId);
     if (!task) throw new NotFoundError("Task");
 
-    // Check if user is admin OR an assignee
+    // Check if user is admin/owner OR an assignee
     const { membership } = await resolveOrgRole(user, task.workspaceId);
-    const isAdmin = membership && membership.role === "admin";
+    const isAdmin = membership && ["admin", "owner"].includes(membership.role);
     const isAssignee = task.assignees.some(
       (a: Types.ObjectId) => a.toString() === user.userId,
     );
 
     if (!isAdmin && !isAssignee) {
       throw new AuthorizationError(
-        "Only admins or assigned users can change task status",
+        "Only admins, owners or assigned users can change task status",
       );
     }
 
