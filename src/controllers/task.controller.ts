@@ -103,6 +103,11 @@ export const createTask = catchAsync(
       .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar");
 
+    const io = req.app.get("io");
+    if (io) {
+      io.to(channelId.toString()).emit("task:created", { task: populated });
+    }
+
     sendSuccess(res, { task: populated }, 201);
   },
 );
@@ -272,6 +277,11 @@ export const updateTask = catchAsync(
       .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar");
 
+    const io = req.app.get("io");
+    if (io && updated) {
+      io.to(updated.channelId.toString()).emit("task:updated", { task: updated });
+    }
+
     sendSuccess(res, { task: updated });
   },
 );
@@ -295,6 +305,14 @@ export const deleteTask = catchAsync(
     }
 
     await Task.findByIdAndDelete(taskId);
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(task.channelId.toString()).emit("task:deleted", { 
+        taskId: task._id.toString(),
+        channelId: task.channelId.toString() 
+      });
+    }
 
     sendSuccess(res, { message: "Task deleted successfully" });
   },
@@ -342,6 +360,11 @@ export const assignTask = catchAsync(
       .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar");
 
+    const io = req.app.get("io");
+    if (io && updated) {
+      io.to(updated.channelId.toString()).emit("task:updated", { task: updated });
+    }
+
     sendSuccess(res, { task: updated });
   },
 );
@@ -380,6 +403,11 @@ export const unassignTask = catchAsync(
     )
       .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar");
+
+    const io = req.app.get("io");
+    if (io && updated) {
+      io.to(updated.channelId.toString()).emit("task:updated", { task: updated });
+    }
 
     sendSuccess(res, { task: updated });
   },
@@ -429,6 +457,11 @@ export const updateTaskStatus = catchAsync(
     })
       .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar");
+
+    const io = req.app.get("io");
+    if (io && updated) {
+      io.to(updated.channelId.toString()).emit("task:updated", { task: updated });
+    }
 
     sendSuccess(res, { task: updated });
   },
