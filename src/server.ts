@@ -33,6 +33,8 @@ async function bootstrap(): Promise<void> {
     },
   });
 
+  app.set("io", io);
+
   // Setup Socket handlers
   setupSocketHandlers(io);
   setupWebRTCHandlers(io);
