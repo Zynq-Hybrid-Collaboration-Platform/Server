@@ -51,6 +51,12 @@ export const getChannelsByWorkspace = catchAsync(async (req: Request, res: Respo
 
   const filtered = channels.filter((channel) => {
     if (userRole === "admin") return true;
+    
+    // Explicit member access
+    if (channel.members && channel.members.some((id: any) => id.toString() === user.userId)) {
+      return true;
+    }
+
     if (!channel.allowedRoles || channel.allowedRoles.length === 0) return true;
     return channel.allowedRoles.includes(userRole);
   });
@@ -105,4 +111,35 @@ export const deleteChannel = catchAsync(async (req: Request, res: Response): Pro
 
   await Channel.findByIdAndDelete(new Types.ObjectId(channelId));
   sendSuccess(res, { message: "Channel deleted successfully" });
+});
+
+// Add member to channel
+export const addChannelMember = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  const { channelId } = req.params;
+  const { userId } = req.body;
+
+  const channel = await Channel.findByIdAndUpdate(
+    new Types.ObjectId(channelId),
+    { $addToSet: { members: new Types.ObjectId(userId) } },
+    { new: true }
+  );
+
+  if (!channel) throw new NotFoundError("Channel");
+
+  sendSuccess(res, { channel });
+});
+
+// Remove member from channel
+export const removeChannelMember = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  const { channelId, userId } = req.params;
+
+  const channel = await Channel.findByIdAndUpdate(
+    new Types.ObjectId(channelId),
+    { $pull: { members: new Types.ObjectId(userId) } },
+    { new: true }
+  );
+
+  if (!channel) throw new NotFoundError("Channel");
+
+  sendSuccess(res, { channel });
 });

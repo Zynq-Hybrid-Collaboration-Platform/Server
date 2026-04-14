@@ -83,7 +83,6 @@ export const createTask = catchAsync(
     if (assignees && assignees.length > 0) {
       await validateChannelAssignees(channel, assignees);
     }
-
     // 4. Create the task
     const task = await Task.create({
       title,
@@ -97,7 +96,6 @@ export const createTask = catchAsync(
       assignees: (assignees || []).map((id: string) => new Types.ObjectId(id)),
       dueDate: dueDate || null,
     });
-
     // 5. Populate and return
     const populated = await Task.findById(task._id)
       .populate("assignees", "name email avatar")
@@ -107,15 +105,12 @@ export const createTask = catchAsync(
     if (io) {
       io.to(channelId.toString()).emit("task:created", { task: populated });
     }
-
     sendSuccess(res, { task: populated }, 201);
   },
 );
-
 // ─────────────────────────────────────────────────────────
 // GET TASKS BY CHANNEL
 // ─────────────────────────────────────────────────────────
-
 export const getTasksByChannel = catchAsync(
   async (req: Request, res: Response): Promise<void> => {
     const { channelId } = req.params;

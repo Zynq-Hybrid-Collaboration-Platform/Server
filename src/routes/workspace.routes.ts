@@ -11,5 +11,6 @@ router.put("/:workspaceId", authenticate as never, workspaceController.updateWor
 router.delete("/:workspaceId", authenticate as never, workspaceController.deleteWorkspaceController);
 router.post("/:workspaceId/members", authenticate as never, workspaceController.addMemberController);
 router.delete("/:workspaceId/members/:userId", authenticate as never, workspaceController.removeMemberController);
+router.get("/:workspaceId/members", authenticate as never, workspaceController.getWorkspaceMembersController);
 
 export { router as workspaceRoutes };
