@@ -1,4 +1,5 @@
 import { Router } from "express";
+import passport from "passport";
 import * as authController from "../controllers/auth.controller";
 import { authenticate } from "../middleware/auth.middleware";
 import { validate } from "../middleware/validate.middleware";
@@ -23,5 +24,9 @@ router.post("/reset-password/:token", validate(resetPasswordSchema), authControl
 router.post("/logout", authenticate as never, authController.logout);
 router.put("/change-password", authenticate as never, validate(changePasswordSchema), authController.changePassword);
 router.get("/me", authenticate as never, authController.getMe);
+
+// Google Auth
+router.get("/google", passport.authenticate("google", { scope: ["profile", "email"], session: false }));
+router.get("/google/callback", passport.authenticate("google", { failureRedirect: "/login", session: false }), authController.googleCallback);
 
 export { router as authRoutes };

@@ -35,7 +35,6 @@ export function extractTenant(
       new AuthorizationError("You do not have access to this organization")
     );
   }
-
   (req as ITenantRequest).tenantContext = {
     orgId,
     userId: req.user.userId,

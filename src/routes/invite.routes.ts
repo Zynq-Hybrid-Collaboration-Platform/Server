@@ -15,6 +15,8 @@ router.post(
   inviteController.createInviteCode
 );
 router.get("/org/:orgId", authenticate as never, inviteController.getOrgInvites);
+router.get("/workspace/:workspaceId", authenticate as never, inviteController.getWorkspaceInvites);
+router.post("/workspace/:workspaceId/refresh", authenticate as never, inviteController.refreshWorkspaceInvite);
 router.patch("/:inviteId/deactivate", authenticate as never, inviteController.deactivateInvite);
 router.delete("/:inviteId", authenticate as never, inviteController.deleteInvite);
 

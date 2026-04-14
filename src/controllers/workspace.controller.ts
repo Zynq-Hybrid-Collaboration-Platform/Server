@@ -1,9 +1,11 @@
 import { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
 import Workspace from "../models/workspace.model";
+import { UserModel } from "../models/auth.model";
 import { NotFoundError } from "../errors";
 import * as authController from "./auth.controller";
 import * as channelController from "./channel.controller";
+import { Channel, ChannelType } from "../models/channel.model";
 
 export const createWorkspaceController = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -25,6 +27,14 @@ export const createWorkspaceController = async (req: Request, res: Response, nex
       members: [{ userId: new Types.ObjectId(authReq.user.userId) }],
     });
 
+    await Channel.create({
+      name: "general",
+      type: ChannelType.TEXT,
+      workspaceId: workspace._id,
+      parentId: null,
+      allowedRoles: [],
+    });
+
     await authController.addWorkspaceToUser(
       authReq.user.userId,
       workspace._id.toString(),
@@ -42,7 +52,6 @@ export const getWorkspaceByIdController = async (req: Request, res: Response, ne
     const { workspaceId } = req.params;
     const workspace = await Workspace.findById(new Types.ObjectId(workspaceId));
     if (!workspace) throw new NotFoundError("Workspace not found");
-    
     res.status(200).json({ success: true, data: workspace });
   } catch (error) {
     next(error);
@@ -126,6 +135,45 @@ export const removeMemberController = async (req: Request, res: Response, next: 
       success: true,
       message: "Member removed from workspace",
       data: workspace,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getWorkspaceMembersController = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId } = req.params;
+    const workspace = await Workspace.findById(workspaceId).populate("members.userId").lean();
+    if (!workspace) throw new NotFoundError("Workspace not found");
+
+    const orgIdStr = workspace.orgId.toString();
+
+    const formattedMembers = (workspace.members || []).map((m: any) => {
+      const user = m.userId;
+      if (!user) return null;
+
+      // Find user's role in the organization that owns this workspace
+      const orgMembership = (user.organizations || []).find(
+        (org: any) => org.orgId.toString() === orgIdStr
+      );
+
+      return {
+        id: user._id?.toString() || user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar || "",
+        role: orgMembership?.role || "member",
+        joinedAt: m.joinedAt,
+      };
+    }).filter(Boolean);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        members: formattedMembers,
+      },
     });
   } catch (error) {
     next(error);

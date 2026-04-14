@@ -8,7 +8,7 @@ export function globalErrorHandler(
   err: Error,
   _req: Request,
   res: Response,
-  _next: NextFunction
+  _next: NextFunction,
 ): void {
   if (err instanceof AppError) {
     if (!err.isOperational) {
@@ -115,3 +115,4 @@ export function globalErrorHandler(
     },
   });
 }
+//convert to switch multiple if 

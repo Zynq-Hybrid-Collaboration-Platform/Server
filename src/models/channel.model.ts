@@ -15,6 +15,7 @@ export interface IChannel extends Document {
     parentId: mongoose.Types.ObjectId | null;
     order: number;
     allowedRoles: string[];
+    members: mongoose.Types.ObjectId[];
 }
 
 const channelSchema = new Schema<IChannel>(
@@ -37,6 +38,7 @@ const channelSchema = new Schema<IChannel>(
         },
         order: { type: Number, default: 0 },
         allowedRoles: { type: [String], default: [] },
+        members: [{ type: Schema.Types.ObjectId, ref: "User", default: [] }],
     },
     { timestamps: true },
 );

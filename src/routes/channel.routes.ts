@@ -9,4 +9,8 @@ router.get("/workspace/:workspaceId", authenticate as never, channelController.g
 router.patch("/:channelId", authenticate as never, channelController.updateChannel);
 router.delete("/:channelId", authenticate as never, channelController.deleteChannel);
 
+// Member management
+router.post("/:channelId/members", authenticate as never, channelController.addChannelMember);
+router.delete("/:channelId/members/:userId", authenticate as never, channelController.removeChannelMember);
+
 export { router as channelRoutes };

@@ -1,7 +1,7 @@
 import { AppError } from "./AppError";
 
 /**
- * 403 Authorization error — user is authenticated but lacks permission.
+ * user is authenticated but lacks permission.
  * Used by: RBAC middleware, tenant middleware, domain ownership checks.
  */
 export class AuthorizationError extends AppError {

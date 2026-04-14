@@ -3,6 +3,9 @@ import { createApp } from "./app";
 import { connectDB, disconnectDB } from "./database/connection";
 import { config } from "./config/env";
 import { logger } from "./logger/logger";
+import { Server } from "socket.io";
+import { setupSocketHandlers } from "./socket/socket.handler";
+import { setupWebRTCHandlers } from "./socket/webrtc.handler";
 
 /**
  * Server bootstrap.
@@ -21,8 +24,20 @@ async function bootstrap(): Promise<void> {
   // 2. Create Express app
   const app = createApp();
 
-  // 3. Create HTTP server (Socket.io will attach to this in a future phase)
+  // 3. Create HTTP server and initialize Socket.io
   const httpServer = http.createServer(app);
+  const io = new Server(httpServer, {
+    cors: {
+      origin: "*", // Adjust this to your frontend URL in production
+      methods: ["GET", "POST"],
+    },
+  });
+
+  app.set("io", io);
+
+  // Setup Socket handlers
+  setupSocketHandlers(io);
+  setupWebRTCHandlers(io);
 
   // 4. Start listening
   httpServer.listen(config.PORT, () => {

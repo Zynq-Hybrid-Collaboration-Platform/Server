@@ -100,6 +100,50 @@ export const getOrgInvites = catchAsync(async (req: Request, res: Response): Pro
   sendSuccess(res, { invites: invites.map(sanitizeInvite) });
 });
 
+export const getWorkspaceInvites = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  const { workspaceId } = req.params;
+
+  const workspace = await Workspace.findById(new Types.ObjectId(workspaceId));
+  if (!workspace) throw new NotFoundError("Workspace not found");
+
+  const invites = await InviteCode.find({
+    workspaceId: new Types.ObjectId(workspaceId),
+    isActive: true,
+  }).sort({ createdAt: -1 });
+
+  sendSuccess(res, { invites: invites.map(sanitizeInvite) });
+});
+
+export const refreshWorkspaceInvite = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  const authReq = req as IAuthenticatedRequest;
+  const { workspaceId } = req.params;
+  const { expiresInHours, maxUses } = req.body;
+  const userId = authReq.user.userId;
+
+  const workspace = await Workspace.findById(new Types.ObjectId(workspaceId));
+  if (!workspace) throw new NotFoundError("Workspace not found");
+
+  // Deactivate existing active invites for this workspace
+  await InviteCode.updateMany(
+    { workspaceId: new Types.ObjectId(workspaceId), isActive: true },
+    { isActive: false }
+  );
+
+  const code = crypto.randomBytes(4).toString("hex").toUpperCase();
+  const expiresAt = new Date(Date.now() + (expiresInHours || 24) * 60 * 60 * 1000);
+
+  const invite = await InviteCode.create({
+    organizationId: workspace.orgId,
+    workspaceId: workspace._id,
+    code,
+    expiresAt,
+    createdBy: new Types.ObjectId(userId),
+    maxUses: maxUses || 0,
+  });
+
+  sendSuccess(res, { invite: sanitizeInvite(invite), message: "Invite code refreshed successfully" }, 201);
+});
+
 export const deactivateInvite = catchAsync(async (req: Request, res: Response): Promise<void> => {
   const { inviteId } = req.params;
   const result = await InviteCode.findByIdAndUpdate(new Types.ObjectId(inviteId), { isActive: false }, { new: true });
@@ -116,7 +160,7 @@ export const deleteInvite = catchAsync(async (req: Request, res: Response): Prom
 
 export const joinWorkspace = catchAsync(async (req: Request, res: Response): Promise<void> => {
   const authReq = req as IAuthenticatedRequest;
-  const { inviteCode, role } = req.body;
+  const { inviteCode } = req.body;
   const userId = authReq.user.userId;
 
   const invite = await InviteCode.findOne({ code: inviteCode, isActive: true });
@@ -132,8 +176,10 @@ export const joinWorkspace = catchAsync(async (req: Request, res: Response): Pro
   if (!org) throw new NotFoundError("Organization not found");
   if (!workspace) throw new NotFoundError("Workspace not found");
 
+  const role = "member";
+
   if (!org.roles.includes(role)) {
-    throw new ValidationError(`Role "${role}" is not available. Available roles: ${org.roles.join(", ")}`);
+    await Organization.findByIdAndUpdate(org._id, { $addToSet: { roles: role } });
   }
 
   await authController.addOrganizationToUser(userId, org._id.toString(), role);

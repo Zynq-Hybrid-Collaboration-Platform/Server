@@ -9,7 +9,9 @@ import {
   NotFoundError,
   AuthorizationError,
   ConflictError,
+  ValidationError,
 } from "../errors";
+import { UserModel } from "../models/auth.model";
 
 const SALT_ROUNDS = 12;
 
@@ -112,6 +114,68 @@ export const removeMember = catchAsync(async (req: Request, res: Response): Prom
   );
 
   sendSuccess(res, { message: "Member removed successfully", organization: updatedOrg });
+});
+
+export const getOrganizationMembers = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  const { orgId } = req.params;
+  
+  const org = await Organization.findById(new Types.ObjectId(orgId));
+  if (!org) throw new NotFoundError("Organization not found");
+
+  const users = await UserModel.find({
+    "organizations.orgId": new Types.ObjectId(orgId)
+  }).select("name email username avatar organizations");
+
+  const members = users.map(user => {
+    const orgMembership = user.organizations.find(o => o.orgId.toString() === orgId);
+    return {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      avatar: user.avatar,
+      role: orgMembership?.role || "member",
+      joinedAt: orgMembership?.joinedAt
+    };
+  });
+
+  sendSuccess(res, { members });
+});
+
+export const updateMemberRole = catchAsync(async (req: Request, res: Response): Promise<void> => {
+  const authReq = req as IAuthenticatedRequest;
+  const { orgId, userId } = req.params;
+  const { role } = req.body;
+  
+  const org = await Organization.findById(new Types.ObjectId(orgId));
+  if (!org) throw new NotFoundError("Organization not found");
+
+  const isAdmin = org.members.length > 0 && org.members[0].toString() === authReq.user.userId;
+  const isOrgItself = authReq.user.userId === orgId;
+  const userOrg = authReq.user.organizations?.find(o => o.orgId === orgId);
+  
+  if (!isAdmin && !isOrgItself && userOrg?.role !== "admin") {
+    throw new AuthorizationError("Only organization admins can update roles");
+  }
+
+  if (!org.roles.includes(role)) {
+    throw new ValidationError(`Role "${role}" is not available. Available roles: ${org.roles.join(", ")}`);
+  }
+
+  const targetUser = await UserModel.findById(new Types.ObjectId(userId));
+  if (!targetUser) throw new NotFoundError("User not found");
+
+  const orgMembershipIndex = targetUser.organizations.findIndex(o => o.orgId.toString() === orgId);
+  if (orgMembershipIndex === -1) {
+    throw new ConflictError("User is not a member of this organization");
+  }
+
+  await UserModel.updateOne(
+    { _id: new Types.ObjectId(userId), "organizations.orgId": new Types.ObjectId(orgId) },
+    { $set: { "organizations.$.role": role } }
+  );
+
+  sendSuccess(res, { message: "Role updated successfully" });
 });
 
 export const getOrgRoles = catchAsync(async (req: Request, res: Response): Promise<void> => {
