@@ -12,6 +12,9 @@ import { logger } from "./logger/logger";
 export function createApp(): Application {
   const app = express();
 
+  // This tells Express to trust the Render load balancer for secure cookies
+  app.set("trust proxy", 1);
+
   // Security & CORS
   app.use(helmet());
   app.use(
