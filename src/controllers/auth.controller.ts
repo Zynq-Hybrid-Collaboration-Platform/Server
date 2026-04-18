@@ -452,14 +452,14 @@ export const googleCallback = catchAsync(async (req: Request, res: Response): Pr
 
   // Redirect to frontend (dashboard or join page)
   const isFounder = user.organizations?.some((org: any) => org.orgId.toString() === user._id.toString() && org.role === "admin");
-  let redirectUrl = config.FRONTEND_URL;
+  let redirectUrl = config.FRONTEND_URLS[0];
 
   if (user.workspaces && user.workspaces.length > 0) {
-    redirectUrl = `${config.FRONTEND_URL}/workspace/${user.workspaces[0].workspaceId}`;
+    redirectUrl = `${config.FRONTEND_URLS[0]}/workspace/${user.workspaces[0].workspaceId}`;
   } else if (isFounder) {
-    redirectUrl = `${config.FRONTEND_URL}/workspace/setup`;
+    redirectUrl = `${config.FRONTEND_URLS[0]}/workspace/setup`;
   } else {
-    redirectUrl = `${config.FRONTEND_URL}/workspace/join`;
+    redirectUrl = `${config.FRONTEND_URLS[0]}/workspace/join`;
   }
 
   res.redirect(redirectUrl);

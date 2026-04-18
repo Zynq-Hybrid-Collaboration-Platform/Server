@@ -28,7 +28,13 @@ async function bootstrap(): Promise<void> {
   const httpServer = http.createServer(app);
   const io = new Server(httpServer, {
     cors: {
-      origin: "*", // Adjust this to your frontend URL in production
+      origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+        if (!origin || config.FRONTEND_URLS.indexOf(origin) !== -1 || config.isDevelopment()) {
+          callback(null, true);
+        } else {
+          callback(new Error("Not allowed by CORS"));
+        }
+      },
       methods: ["GET", "POST"],
     },
   });

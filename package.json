@@ -14,7 +14,6 @@
   "description": "",
   "dependencies": {
     "bcrypt": "^6.0.0",
-    "bullmq": "^5.70.1",
     "cloudinary": "^2.9.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
@@ -28,7 +27,6 @@
     "nodemailer": "^8.0.1",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
-    "redis": "^5.11.0",
     "socket.io": "^4.8.3",
     "winston": "^3.19.0"
   },
