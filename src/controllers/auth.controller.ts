@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Request, Response, CookieOptions } from "express";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
 import jwt, { SignOptions } from "jsonwebtoken";
@@ -26,17 +26,17 @@ import {
 const SALT_ROUNDS = 12;
 const RESET_TOKEN_EXPIRES_MS = 60 * 60 * 1000;
 
-const REFRESH_COOKIE_OPTIONS = {
+const REFRESH_COOKIE_OPTIONS: CookieOptions = {
   httpOnly: true,
   secure: config.isProduction(),
-  sameSite: "strict" as const,
+  sameSite: config.isProduction() ? "none" : "lax",
   path: "/api/v1/auth",
 };
 
-const ACCESS_COOKIE_OPTIONS = {
+const ACCESS_COOKIE_OPTIONS: CookieOptions = {
   httpOnly: true,
   secure: config.isProduction(),
-  sameSite: "lax" as const,
+  sameSite: config.isProduction() ? "none" : "lax",
 };
 
 // Private Helpers
