@@ -133,7 +133,6 @@ export const getTasksByChannel = catchAsync(
     if (priority && typeof priority === "string") {
       filter.priority = priority.toUpperCase();
     }
-
     // Pagination
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 20));
@@ -148,7 +147,6 @@ export const getTasksByChannel = catchAsync(
         .limit(limitNum),
       Task.countDocuments(filter),
     ]);
-
     sendSuccess(
       res,
       { tasks },
@@ -241,7 +239,7 @@ export const getTaskById = catchAsync(
 );
 
 // ─────────────────────────────────────────────────────────
-// UPDATE TASK (Admin only)
+// UPDATE TASK 
 // ─────────────────────────────────────────────────────────
 
 export const updateTask = catchAsync(

@@ -99,7 +99,7 @@ function buildWelcomeHtml(userName: string): string {
     <h2 style="color: #333;">Welcome to CollabHub!</h2>
     <p>Hi ${userName},</p>
     <p>Your account has been created successfully. You're all set to start collaborating with your team.</p>
-    ${ctaButton("Go to CollabHub", config.FRONTEND_URL)}
+    ${ctaButton("Go to CollabHub", config.FRONTEND_URLS[0])}
     <p style="color: #666; font-size: 14px;">
       If you didn't create this account, please contact our support team.
     </p>
@@ -315,7 +315,7 @@ class EmailService {
     resetToken: string,
     userName?: string
   ): Promise<void> {
-    const resetUrl = `${config.FRONTEND_URL}/reset-password?token=${resetToken}`;
+    const resetUrl = `${config.FRONTEND_URLS[0]}/reset-password?token=${resetToken}`;
 
     await this.send({
       to,

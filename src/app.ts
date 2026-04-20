@@ -12,11 +12,23 @@ import { logger } from "./logger/logger";
 export function createApp(): Application {
   const app = express();
 
+  // This tells Express to trust the Render load balancer for secure cookies
+  app.set("trust proxy", 1);
+
   // Security & CORS
   app.use(helmet());
   app.use(
     cors({
-      origin: config.FRONTEND_URL,
+      origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps or curl requests)
+        if (!origin) return callback(null, true);
+        
+        if (config.FRONTEND_URLS.indexOf(origin) !== -1 || config.isDevelopment()) {
+          callback(null, true);
+        } else {
+          callback(new Error("Not allowed by CORS"));
+        }
+      },
       credentials: true,
     }),
   );

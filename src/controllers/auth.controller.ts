@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Request, Response, CookieOptions } from "express";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
 import jwt, { SignOptions } from "jsonwebtoken";
@@ -26,17 +26,17 @@ import {
 const SALT_ROUNDS = 12;
 const RESET_TOKEN_EXPIRES_MS = 60 * 60 * 1000;
 
-const REFRESH_COOKIE_OPTIONS = {
+const REFRESH_COOKIE_OPTIONS: CookieOptions = {
   httpOnly: true,
   secure: config.isProduction(),
-  sameSite: "strict" as const,
+  sameSite: config.isProduction() ? "none" : "lax",
   path: "/api/v1/auth",
 };
 
-const ACCESS_COOKIE_OPTIONS = {
+const ACCESS_COOKIE_OPTIONS: CookieOptions = {
   httpOnly: true,
   secure: config.isProduction(),
-  sameSite: "lax" as const,
+  sameSite: config.isProduction() ? "none" : "lax",
 };
 
 // Private Helpers
@@ -452,14 +452,14 @@ export const googleCallback = catchAsync(async (req: Request, res: Response): Pr
 
   // Redirect to frontend (dashboard or join page)
   const isFounder = user.organizations?.some((org: any) => org.orgId.toString() === user._id.toString() && org.role === "admin");
-  let redirectUrl = config.FRONTEND_URL;
+  let redirectUrl = config.FRONTEND_URLS[0];
 
   if (user.workspaces && user.workspaces.length > 0) {
-    redirectUrl = `${config.FRONTEND_URL}/workspace/${user.workspaces[0].workspaceId}`;
+    redirectUrl = `${config.FRONTEND_URLS[0]}/workspace/${user.workspaces[0].workspaceId}`;
   } else if (isFounder) {
-    redirectUrl = `${config.FRONTEND_URL}/workspace/setup`;
+    redirectUrl = `${config.FRONTEND_URLS[0]}/workspace/setup`;
   } else {
-    redirectUrl = `${config.FRONTEND_URL}/workspace/join`;
+    redirectUrl = `${config.FRONTEND_URLS[0]}/workspace/join`;
   }
 
   res.redirect(redirectUrl);

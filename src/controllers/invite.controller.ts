@@ -42,23 +42,27 @@ function sanitizeInvite(invite: any): IInviteSafe {
 
 export const createInviteCode = catchAsync(async (req: Request, res: Response): Promise<void> => {
   const authReq = req as IAuthenticatedRequest;
-  const { organizationId, workspaceId, expiresInHours, maxUses } = req.body;
+  const { workspaceId } = req.params;
+  const { expiresIn, maxUses } = req.body;
   const userId = authReq.user.userId;
 
-  const [org, workspace] = await Promise.all([
-    Organization.findById(new Types.ObjectId(organizationId)),
-    Workspace.findById(new Types.ObjectId(workspaceId))
-  ]);
-
-  if (!org) throw new NotFoundError("Organization not found");
+  const workspace = await Workspace.findById(new Types.ObjectId(workspaceId));
   if (!workspace) throw new NotFoundError("Workspace not found");
 
   const code = crypto.randomBytes(4).toString("hex").toUpperCase();
-  const expiresAt = new Date(Date.now() + (expiresInHours || 24) * 60 * 60 * 1000);
+  
+  // Parse expiresIn (e.g., "24h", "7d")
+  let durationMs = 24 * 60 * 60 * 1000; // Default 24h
+  if (expiresIn) {
+    const value = parseInt(expiresIn);
+    if (expiresIn.endsWith("h")) durationMs = value * 60 * 60 * 1000;
+    else if (expiresIn.endsWith("d")) durationMs = value * 24 * 60 * 60 * 1000;
+  }
+  const expiresAt = new Date(Date.now() + durationMs);
 
   const invite = await InviteCode.create({
-    organizationId: new Types.ObjectId(organizationId),
-    workspaceId: new Types.ObjectId(workspaceId),
+    organizationId: workspace.orgId,
+    workspaceId: workspace._id,
     code,
     expiresAt,
     createdBy: new Types.ObjectId(userId),
@@ -109,7 +113,9 @@ export const getWorkspaceInvites = catchAsync(async (req: Request, res: Response
   const invites = await InviteCode.find({
     workspaceId: new Types.ObjectId(workspaceId),
     isActive: true,
-  }).sort({ createdAt: -1 });
+  })
+    .populate("createdBy", "name username email avatar")
+    .sort({ createdAt: -1 });
 
   sendSuccess(res, { invites: invites.map(sanitizeInvite) });
 });
@@ -187,7 +193,7 @@ export const joinWorkspace = catchAsync(async (req: Request, res: Response): Pro
 
   await Workspace.findByIdAndUpdate(
     workspace._id,
-    { $addToSet: { members: { userId: new Types.ObjectId(userId) } } },
+    { $addToSet: { members: { userId: new Types.ObjectId(userId), role: "member" } } },
     { new: true }
   );
 

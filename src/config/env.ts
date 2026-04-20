@@ -71,7 +71,7 @@ export const config = {
   SMTP_FROM_EMAIL: optionalEnv("SMTP_FROM_EMAIL", "noreply@collabhub.com"),
 
   // ── Frontend / CORS ──────────────────────────────────
-  FRONTEND_URL: optionalEnv("FRONTEND_URL", "http://localhost:3001"),
+  FRONTEND_URLS: optionalEnv("FRONTEND_URL", "http://localhost:3001").split(",").map(url => url.trim()),
 
   // ── Cloudinary ────────────────────────────────────────
   CLOUDINARY_CLOUD_NAME: optionalEnv("CLOUDINARY_CLOUD_NAME", ""),
