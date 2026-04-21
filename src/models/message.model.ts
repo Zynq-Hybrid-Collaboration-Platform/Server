@@ -4,6 +4,8 @@ export enum MessageType {
     TEXT = "TEXT",
     IMAGE = "IMAGE",
     FILE = "FILE",
+    STICKER = "STICKER",
+    GIF = "GIF",
 }
 
 export interface IMessage extends Document {
@@ -12,6 +14,14 @@ export interface IMessage extends Document {
     content: string;
     type: MessageType;
     isEdited: boolean;
+    isPinned: boolean;
+    pinnedAt: Date | null;
+    pinnedBy: mongoose.Types.ObjectId | null;
+    reactions: {
+        emoji: string;
+        users: mongoose.Types.ObjectId[];
+    }[];
+    replyTo: mongoose.Types.ObjectId | null;
     attachments: {
         url: string;
         name: string;
@@ -54,6 +64,38 @@ const messageSchema = new Schema<IMessage>(
                 fileType: String,
             },
         ],
+        isPinned: {
+            type: Boolean,
+            default: false,
+        },
+        pinnedAt: {
+            type: Date,
+            default: null,
+        },
+        pinnedBy: {
+            type: Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+        },
+        reactions: [
+            {
+                emoji: {
+                    type: String,
+                    required: true,
+                },
+                users: [
+                    {
+                        type: Schema.Types.ObjectId,
+                        ref: "User",
+                    },
+                ],
+            },
+        ],
+        replyTo: {
+            type: Schema.Types.ObjectId,
+            ref: "Message",
+            default: null,
+        },
     },
     { timestamps: true }
 );

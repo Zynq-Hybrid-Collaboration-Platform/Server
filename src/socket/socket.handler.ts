@@ -2,7 +2,10 @@ import { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { config } from "../config/env";
 import { Message } from "../models/message.model";
+import { Channel } from "../models/channel.model";
+import Workspace from "../models/workspace.model";
 import { Types } from "mongoose";
+import { sendMessageSchema, pinMessageSchema, reactMessageSchema } from "../validators/message.validator";
 
 interface SocketUser {
     userId: string;
@@ -72,24 +75,122 @@ export const setupSocketHandlers = (io: Server) => {
         });
 
         // Chat Message
-        socket.on("send-message", async (data: { channelId: string; content: string; type?: string; attachments?: any[] }) => {
-            const { channelId, content, type, attachments } = data;
+        socket.on("send-message", async (data: { channelId: string; content: string; type?: string; attachments?: any[]; replyTo?: string }) => {
+            const { error, value } = sendMessageSchema.validate(data);
+            if (error) return socket.emit("error", { message: error.details[0].message });
+
+            const { channelId, content, type, attachments, replyTo } = value;
 
             try {
                 const message = await Message.create({
                     senderId: new Types.ObjectId(user.userId),
                     channelId: new Types.ObjectId(channelId),
-                    content,
+                    content: content || "",
                     type: type || "TEXT",
                     attachments: attachments || [],
+                    replyTo: replyTo ? new Types.ObjectId(replyTo) : null,
                 });
-                const populatedMessage = await Message.findById(message._id).populate("senderId", "name avatar");
+                
+                const populatedMessage = await Message.findById(message._id)
+                    .populate("senderId", "name avatar")
+                    .populate({
+                        path: "replyTo",
+                        populate: { path: "senderId", select: "name avatar" }
+                    });
 
-                // Broadcast to everyone in the room (including sender if needed, but usually sender handles local state)
+                // Broadcast to everyone in the room
                 io.to(channelId).emit("new-message", populatedMessage);
             } catch (error) {
                 console.error("Error saving message:", error);
                 socket.emit("error", { message: "Failed to send message" });
+            }
+        });
+
+        // Pin/Unpin Message
+        socket.on("pin-message", async (data: { messageId: string; channelId: string; isPinned: boolean }) => {
+            const { error, value } = pinMessageSchema.validate(data);
+            if (error) return socket.emit("error", { message: error.details[0].message });
+
+            const { messageId, channelId, isPinned } = value;
+
+            try {
+                const channel = await Channel.findById(channelId);
+                if (!channel) return socket.emit("error", { message: "Channel not found" });
+
+                const workspace = await Workspace.findById(channel.workspaceId);
+                if (!workspace) return socket.emit("error", { message: "Workspace not found" });
+
+                const member = workspace.members.find(m => m.userId.toString() === user.userId);
+                if (!member || (member.role !== "admin" && member.role !== "owner")) {
+                    return socket.emit("error", { message: "Unauthorized to pin messages" });
+                }
+
+                const message = await Message.findById(messageId);
+                if (!message) return socket.emit("error", { message: "Message not found" });
+
+                message.isPinned = isPinned;
+                message.pinnedAt = isPinned ? new Date() : null;
+                message.pinnedBy = isPinned ? new Types.ObjectId(user.userId) : null;
+                await message.save();
+
+                const populatedMessage = await Message.findById(message._id)
+                    .populate("senderId", "name avatar")
+                    .populate("pinnedBy", "name avatar")
+                    .populate({
+                        path: "replyTo",
+                        populate: { path: "senderId", select: "name avatar" }
+                    });
+
+                io.to(channelId).emit("message-pinned", populatedMessage);
+            } catch (error) {
+                console.error("Error pinning message:", error);
+                socket.emit("error", { message: "Failed to pin message" });
+            }
+        });
+
+        // Emoji Reactions
+        socket.on("react-message", async (data: { messageId: string; channelId: string; emoji: string }) => {
+            const { error, value } = reactMessageSchema.validate(data);
+            if (error) return socket.emit("error", { message: error.details[0].message });
+
+            const { messageId, channelId, emoji } = value;
+            const userId = new Types.ObjectId(user.userId);
+
+            try {
+                const message = await Message.findById(messageId);
+                if (!message) return socket.emit("error", { message: "Message not found" });
+
+                const reactionIndex = message.reactions.findIndex(r => r.emoji === emoji);
+
+                if (reactionIndex > -1) {
+                    const userIndex = message.reactions[reactionIndex].users.findIndex(id => id.toString() === userId.toString());
+                    if (userIndex > -1) {
+                        // Toggle Off: Remove user
+                        message.reactions[reactionIndex].users.splice(userIndex, 1);
+                        // Clean up if no users left for this emoji
+                        if (message.reactions[reactionIndex].users.length === 0) {
+                            message.reactions.splice(reactionIndex, 1);
+                        }
+                    } else {
+                        // Toggle On: Add user
+                        message.reactions[reactionIndex].users.push(userId);
+                    }
+                } else {
+                    // New reaction
+                    message.reactions.push({ emoji, users: [userId] });
+                }
+
+                await message.save();
+                
+                const updatedMessage = await Message.findById(messageId).populate("reactions.users", "name avatar");
+                
+                io.to(channelId).emit("message-reaction", { 
+                    messageId, 
+                    reactions: updatedMessage?.reactions || [] 
+                });
+            } catch (error) {
+                console.error("Error reacting to message:", error);
+                socket.emit("error", { message: "Failed to update reaction" });
             }
         });
 
