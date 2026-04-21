@@ -20,7 +20,13 @@ export const getMessages = catchAsync(async (req: Request, res: Response) => {
     const messages = await Message.find(query)
         .sort({ createdAt: -1 })
         .limit(Number(limit))
-        .populate("senderId", "name avatar");
+        .populate("senderId", "name avatar")
+        .populate({
+            path: "replyTo",
+            populate: { path: "senderId", select: "name avatar" }
+        })
+        .populate("reactions.users", "name avatar")
+        .populate("pinnedBy", "name avatar");
 
     const nextCursor = messages.length === Number(limit) ? messages[messages.length - 1].createdAt : null;
 
@@ -29,7 +35,7 @@ export const getMessages = catchAsync(async (req: Request, res: Response) => {
 
 // Create a message (for REST fallback or direct creation)
 export const createMessage = catchAsync(async (req: Request, res: Response) => {
-    const { channelId, content, type, attachments } = req.body;
+    const { channelId, content, type, attachments, replyTo } = req.body;
     const user = (req as any).user;
 
     const message = await Message.create({
@@ -38,9 +44,17 @@ export const createMessage = catchAsync(async (req: Request, res: Response) => {
         content,
         type,
         attachments,
+        replyTo: replyTo ? new Types.ObjectId(replyTo) : null,
     });
 
-    const populatedMessage = await Message.findById(message._id).populate("senderId", "name avatar");
+    const populatedMessage = await Message.findById(message._id)
+        .populate("senderId", "name avatar")
+        .populate({
+            path: "replyTo",
+            populate: { path: "senderId", select: "name avatar" }
+        })
+        .populate("reactions.users", "name avatar")
+        .populate("pinnedBy", "name avatar");
 
     sendSuccess(res, { message: populatedMessage }, 201);
 });
@@ -62,7 +76,14 @@ export const updateMessage = catchAsync(async (req: Request, res: Response) => {
     message.isEdited = true;
     await message.save();
 
-    const populatedMessage = await Message.findById(message._id).populate("senderId", "name avatar");
+    const populatedMessage = await Message.findById(message._id)
+        .populate("senderId", "name avatar")
+        .populate({
+            path: "replyTo",
+            populate: { path: "senderId", select: "name avatar" }
+        })
+        .populate("reactions.users", "name avatar")
+        .populate("pinnedBy", "name avatar");
 
     sendSuccess(res, { message: populatedMessage });
 });
