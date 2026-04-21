@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { Types } from "mongoose";
 import Workspace from "../models/workspace.model";
-import { User, UserModel } from "../models/auth.model";
+import { UserModel as User } from "../models/auth.model";
 import { NotFoundError, ForbiddenError, ValidationError } from "../errors";
 import * as authController from "./auth.controller";
 import * as channelController from "./channel.controller";
