@@ -40,11 +40,10 @@ function sanitizeInvite(invite: any): IInviteSafe {
 // HTTP Handlers
 // ─────────────────────────────────────────────────────
 
-export const createInviteCode = catchAsync(async (req: Request, res: Response): Promise<void> => {
-  const authReq = req as IAuthenticatedRequest;
+export const createInviteCode = catchAsync(async (req: IAuthenticatedRequest, res: Response): Promise<void> => {
   const { workspaceId } = req.params;
   const { expiresIn, maxUses } = req.body;
-  const userId = authReq.user.userId;
+  const userId = req.user.userId;
 
   const workspace = await Workspace.findById(new Types.ObjectId(workspaceId));
   if (!workspace) throw new NotFoundError("Workspace not found");
@@ -120,11 +119,10 @@ export const getWorkspaceInvites = catchAsync(async (req: Request, res: Response
   sendSuccess(res, { invites: invites.map(sanitizeInvite) });
 });
 
-export const refreshWorkspaceInvite = catchAsync(async (req: Request, res: Response): Promise<void> => {
-  const authReq = req as IAuthenticatedRequest;
+export const refreshWorkspaceInvite = catchAsync(async (req: IAuthenticatedRequest, res: Response): Promise<void> => {
   const { workspaceId } = req.params;
   const { expiresInHours, maxUses } = req.body;
-  const userId = authReq.user.userId;
+  const userId = req.user.userId;
 
   const workspace = await Workspace.findById(new Types.ObjectId(workspaceId));
   if (!workspace) throw new NotFoundError("Workspace not found");
@@ -164,10 +162,9 @@ export const deleteInvite = catchAsync(async (req: Request, res: Response): Prom
   sendSuccess(res, { message: "Invite code deleted successfully" });
 });
 
-export const joinWorkspace = catchAsync(async (req: Request, res: Response): Promise<void> => {
-  const authReq = req as IAuthenticatedRequest;
+export const joinWorkspace = catchAsync(async (req: IAuthenticatedRequest, res: Response): Promise<void> => {
   const { inviteCode } = req.body;
-  const userId = authReq.user.userId;
+  const userId = req.user.userId;
 
   const invite = await InviteCode.findOne({ code: inviteCode, isActive: true });
   if (!invite) throw new NotFoundError("Invalid or expired invite code");

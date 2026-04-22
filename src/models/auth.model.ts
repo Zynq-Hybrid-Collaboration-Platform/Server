@@ -78,7 +78,7 @@ const userSchema = new Schema<IUserDocument>(
     },
     password: {
       type: String,
-      required: function(this: any) {
+      required: function (this: any) {
         return !this.googleId;
       },
       select: false,

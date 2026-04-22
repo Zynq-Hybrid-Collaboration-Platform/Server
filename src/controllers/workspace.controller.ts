@@ -10,10 +10,9 @@ import { IAuthenticatedRequest } from "../types/request.types";
 import { catchAsync } from "../middleware/async-handler";
 import { sendSuccess } from "../utils/response";
 
-export const createWorkspaceController = catchAsync(async (req: Request, res: Response) => {
+export const createWorkspaceController = catchAsync(async (req: IAuthenticatedRequest, res: Response) => {
   const { orgId, name } = req.body;
-  const authReq = req as IAuthenticatedRequest;
-  const userId = authReq.user.userId;
+  const userId = req.user.userId;
 
   const effectiveOrgId = orgId || userId;
 
@@ -126,10 +125,9 @@ export const addMemberController = async (req: Request, res: Response, next: Nex
   }
 };
 
-export const removeMemberController = catchAsync(async (req: Request, res: Response) => {
+export const removeMemberController = catchAsync(async (req: IAuthenticatedRequest, res: Response) => {
   const { workspaceId, userId } = req.params;
-  const authReq = req as IAuthenticatedRequest;
-  const requesterId = authReq.user.userId;
+  const requesterId = req.user.userId;
 
   const workspace = await Workspace.findById(workspaceId);
   if (!workspace) throw new NotFoundError("Workspace not found");
@@ -155,12 +153,11 @@ export const removeMemberController = catchAsync(async (req: Request, res: Respo
   sendSuccess(res, { message: "Member removed from workspace and all channels" });
 });
 
-export const updateMemberRoleController = catchAsync(async (req: Request, res: Response) => {
+export const updateMemberRoleController = catchAsync(async (req: IAuthenticatedRequest, res: Response) => {
   const { workspaceId, userId } = req.params;
   const { role } = req.body;
-  const authReq = req as IAuthenticatedRequest;
   
-  if (userId === authReq.user.userId) {
+  if (userId === req.user.userId) {
     throw new ValidationError("You cannot change your own role");
   }
 
@@ -168,7 +165,7 @@ export const updateMemberRoleController = catchAsync(async (req: Request, res: R
   if (!workspace) throw new NotFoundError("Workspace not found");
 
   // Only Owner can change roles
-  const requester = workspace.members.find(m => m.userId.toString() === authReq.user.userId);
+  const requester = workspace.members.find(m => m.userId.toString() === req.user.userId);
   if (!requester || requester.role !== "owner") {
     throw new ForbiddenError("Only workspace owners can change member roles");
   }
