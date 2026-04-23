@@ -24,21 +24,37 @@ export const authorizeWorkspace = (allowedRoles: string[] = []) => {
       throw new NotFoundError("Workspace not found");
     }
 
-    const member = workspace.members.find(
+    // Find all entries for this user in the workspace
+    const memberEntries = workspace.members.filter(
       (m) => m.userId.toString() === userId.toString()
     );
 
-    if (!member) {
+    if (memberEntries.length === 0) {
       throw new ForbiddenError("You are not a member of this workspace");
     }
 
-    if (allowedRoles.length > 0 && !allowedRoles.includes(member.role)) {
+    // Check if ANY of the user's entries have a role that is allowed
+    const hasPermission = allowedRoles.length === 0 || 
+                         memberEntries.some(m => allowedRoles.includes(m.role));
+
+    if (!hasPermission) {
       throw new ForbiddenError("You do not have permission to perform this action");
+    }
+
+    // Determine the highest role for attachment to request
+    // Priority: owner > admin > member
+    const roles = memberEntries.map(m => m.role);
+    let effectiveRole: "owner" | "admin" | "member" = "member";
+    
+    if (roles.includes("owner")) {
+      effectiveRole = "owner";
+    } else if (roles.includes("admin")) {
+      effectiveRole = "admin";
     }
 
     // Attach workspace and member role to request for use in controllers
     (req as any).workspace = workspace;
-    (req as any).memberRole = member.role;
+    (req as any).memberRole = effectiveRole;
 
     next();
   });
