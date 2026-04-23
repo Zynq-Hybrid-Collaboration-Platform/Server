@@ -418,7 +418,7 @@ export const addWorkspaceToUser = async (userId: string, workspaceId: string, na
   if (user) {
     if (user.workspaces?.some(w => w.workspaceId.toString() === workspaceId)) return;
     await UserModel.findByIdAndUpdate(userId, {
-      $addToSet: { workspaces: { workspaceId, name, joinedAt: new Date() } },
+      $push: { workspaces: { workspaceId, name, joinedAt: new Date() } },
     });
     logger.info("Workspace added to user", { userId, workspaceId, name });
     return;
