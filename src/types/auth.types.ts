@@ -102,7 +102,7 @@ export interface IUserSafe {
   avatar: string;
   status: string;
   organizations: Array<{ orgId: string; role: string; joinedAt: string }>;
-  workspaces: Array<{ workspaceId: string; name: string; joinedAt: string }>;
+  workspaces: Array<{ workspaceId: string; name: string; joinedAt: string; role: string }>;
 }
 
 export interface IAuthTokens {
