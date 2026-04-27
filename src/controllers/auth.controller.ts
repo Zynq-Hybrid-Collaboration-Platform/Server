@@ -78,14 +78,38 @@ function sanitizeUser(user: any): IUserSafe {
     organizations: (user.organizations || []).map((o: any) => ({
       orgId: o.orgId.toString(),
       role: o.role,
-      joinedAt: o.joinedAt.toISOString(),
+      joinedAt: o.joinedAt instanceof Date ? o.joinedAt.toISOString() : o.joinedAt,
     })),
     workspaces: (user.workspaces || []).map((w: any) => ({
       workspaceId: w.workspaceId.toString(),
       name: w.name,
-      joinedAt: w.joinedAt.toISOString(),
+      joinedAt: w.joinedAt instanceof Date ? w.joinedAt.toISOString() : w.joinedAt,
+      role: w.role || "member",
     })),
   };
+}
+
+/**
+ * Fetches the user's role for each workspace they belong to from the Workspace collection
+ * and attaches it to the user object's workspaces array.
+ */
+async function fetchUserWorkspacesWithRoles(user: any) {
+  if (!user || !user.workspaces || user.workspaces.length === 0) return user;
+
+  const workspaceIds = user.workspaces.map((w: any) => w.workspaceId);
+  const workspaces = await Workspace.find({ _id: { $in: workspaceIds } }).lean();
+
+  const workspacesWithRoles = user.workspaces.map((w: any) => {
+    const workspaceIdStr = w.workspaceId.toString();
+    const workspace = workspaces.find((ws: any) => ws._id.toString() === workspaceIdStr);
+    const member = workspace?.members.find((m: any) => m.userId.toString() === user._id.toString());
+
+    return {
+      ...w,
+      role: member?.role || "member",
+    };
+  })
+  return { ...user, workspaces: workspacesWithRoles };
 }
 
 // Helpers
@@ -154,12 +178,14 @@ export const login = catchAsync(async (req: Request, res: Response): Promise<voi
 
   logger.info("User logged in", { userId: user._id });
 
+  const userWithRoles = await fetchUserWorkspacesWithRoles(user);
+
   res.cookie("refreshToken", tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
   res.cookie("accessToken", tokens.accessToken, ACCESS_COOKIE_OPTIONS);
 
   sendSuccess(res, {
     message: "Logged in successfully",
-    user: sanitizeUser(user),
+    user: sanitizeUser(userWithRoles),
     accessToken: tokens.accessToken,
   });
 });
@@ -200,7 +226,8 @@ export const loginOrg = catchAsync(async (req: Request, res: Response): Promise<
     workspaces: workspaces.map(w => ({
       workspaceId: w._id.toString(),
       name: w.name,
-      joinedAt: w.createdAt.toISOString()
+      joinedAt: w.createdAt.toISOString(),
+      role: "admin"
     }))
   };
 
@@ -352,7 +379,8 @@ export const getMe = catchAsync(async (req: Request, res: Response): Promise<voi
   const user = await findUser(userId);
 
   if (user) {
-    userSafe = sanitizeUser(user);
+    const userWithRoles = await fetchUserWorkspacesWithRoles(user);
+    userSafe = sanitizeUser(userWithRoles);
   } else {
     const org = await findOrg(userId);
     if (org) {
@@ -374,7 +402,8 @@ export const getMe = catchAsync(async (req: Request, res: Response): Promise<voi
         workspaces: workspaces.map(w => ({
           workspaceId: w._id.toString(),
           name: w.name,
-          joinedAt: w.createdAt.toISOString()
+          joinedAt: w.createdAt.toISOString(),
+          role: "admin"
         }))
       };
     }
