@@ -181,6 +181,14 @@ export const joinWorkspace = catchAsync(async (req: IAuthenticatedRequest, res: 
 
   const role = "member";
 
+  const isAlreadyMember = workspace.members.some(
+    (m) => m.userId.toString() === userId.toString()
+  );
+
+  if (isAlreadyMember) {
+    throw new ConflictError("You are already a member of this workspace");
+  }
+
   if (!org.roles.includes(role)) {
     await Organization.findByIdAndUpdate(org._id, { $addToSet: { roles: role } });
   }
@@ -188,11 +196,12 @@ export const joinWorkspace = catchAsync(async (req: IAuthenticatedRequest, res: 
   await authController.addOrganizationToUser(userId, org._id.toString(), role);
   await authController.addWorkspaceToUser(userId, workspace._id.toString(), workspace.name);
 
-  await Workspace.findByIdAndUpdate(
-    workspace._id,
-    { $addToSet: { members: { userId: new Types.ObjectId(userId), role: "member" } } },
-    { new: true }
-  );
+  workspace.members.push({
+    userId: new Types.ObjectId(userId),
+    role: role as any,
+    joinedAt: new Date()
+  });
+  await workspace.save();
 
   // Consume invite
   await InviteCode.findByIdAndUpdate(invite._id, { $inc: { uses: 1 } });

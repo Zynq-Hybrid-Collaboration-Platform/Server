@@ -47,26 +47,18 @@ export const createWorkspaceController = catchAsync(async (req: IAuthenticatedRe
   sendSuccess(res, { workspace }, 201);
 });
 
-export const getWorkspaceByIdController = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { workspaceId } = req.params;
-    const workspace = await Workspace.findById(new Types.ObjectId(workspaceId));
-    if (!workspace) throw new NotFoundError("Workspace not found");
-    res.status(200).json({ success: true, data: workspace });
-  } catch (error) {
-    next(error);
-  }
-};
+export const getWorkspaceByIdController = catchAsync(async (req: Request, res: Response) => {
+  const { workspaceId } = req.params;
+  const workspace = await Workspace.findById(new Types.ObjectId(workspaceId));
+  if (!workspace) throw new NotFoundError("Workspace not found");
+  sendSuccess(res, { workspace });
+});
 
-export const getWorkspacesByOrgController = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { orgId } = req.params;
-    const workspaces = await Workspace.find({ orgId: new Types.ObjectId(orgId) });
-    res.status(200).json({ success: true, data: workspaces });
-  } catch (error) {
-    next(error);
-  }
-};
+export const getWorkspacesByOrgController = catchAsync(async (req: Request, res: Response) => {
+  const { orgId } = req.params;
+  const workspaces = await Workspace.find({ orgId: new Types.ObjectId(orgId) });
+  sendSuccess(res, { workspaces });
+});
 
 export const updateWorkspaceController = catchAsync(async (req: Request, res: Response) => {
   const { workspaceId } = req.params;
@@ -87,43 +79,48 @@ export const updateWorkspaceController = catchAsync(async (req: Request, res: Re
   sendSuccess(res, { workspace });
 });
 
-export const deleteWorkspaceController = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { workspaceId } = req.params;
-    const workspace = await Workspace.findByIdAndDelete(new Types.ObjectId(workspaceId));
-    if (!workspace) throw new NotFoundError("Workspace not found");
+export const deleteWorkspaceController = catchAsync(async (req: Request, res: Response) => {
+  const { workspaceId } = req.params;
+  const workspace = await Workspace.findByIdAndDelete(new Types.ObjectId(workspaceId));
+  if (!workspace) throw new NotFoundError("Workspace not found");
 
-    await channelController.deleteChannelsByWorkspace(workspaceId);
+  await channelController.deleteChannelsByWorkspace(workspaceId);
 
-    res.status(200).json({
-      success: true,
-      message: "Workspace deleted successfully",
-      data: workspace,
-    });
-  } catch (error) {
-    next(error);
+  sendSuccess(res, { 
+    message: "Workspace deleted successfully",
+    workspace 
+  });
+});
+
+export const addMemberController = catchAsync(async (req: Request, res: Response) => {
+  const { workspaceId } = req.params;
+  const { userId } = req.body;
+
+  const workspace = await Workspace.findById(workspaceId);
+  if (!workspace) throw new NotFoundError("Workspace not found");
+
+  // Check if user is already a member to prevent duplicates
+  const isAlreadyMember = workspace.members.some(
+    (m) => m.userId.toString() === userId.toString()
+  );
+
+  if (isAlreadyMember) {
+    throw new ValidationError("User is already a member of this workspace");
   }
-};
 
-export const addMemberController = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { workspaceId } = req.params;
-    const { userId } = req.body;
-    const workspace = await Workspace.findByIdAndUpdate(
-      new Types.ObjectId(workspaceId),
-      { $addToSet: { members: { userId: new Types.ObjectId(userId) } } },
-      { new: true }
-    );
-    if (!workspace) throw new NotFoundError("Workspace not found");
-    res.status(200).json({
-      success: true,
-      message: "Member added to workspace",
-      data: workspace,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+  workspace.members.push({
+    userId: new Types.ObjectId(userId),
+    role: "member",
+    joinedAt: new Date()
+  });
+
+  await workspace.save();
+
+  sendSuccess(res, { 
+    message: "Member added to workspace",
+    workspace 
+  });
+});
 
 export const removeMemberController = catchAsync(async (req: IAuthenticatedRequest, res: Response) => {
   const { workspaceId, userId } = req.params;
@@ -170,10 +167,16 @@ export const updateMemberRoleController = catchAsync(async (req: IAuthenticatedR
     throw new ForbiddenError("Only workspace owners can change member roles");
   }
 
-  const memberIndex = workspace.members.findIndex(m => m.userId.toString() === userId);
-  if (memberIndex === -1) throw new NotFoundError("Member not found in workspace");
+  const hasMember = workspace.members.some(m => m.userId.toString() === userId);
+  if (!hasMember) throw new NotFoundError("Member not found in workspace");
 
-  workspace.members[memberIndex].role = role;
+  // Update all entries for this user (handles legacy duplicates)
+  workspace.members.forEach(m => {
+    if (m.userId.toString() === userId) {
+      m.role = role;
+    }
+  });
+
   await workspace.save();
 
   sendSuccess(res, { message: `Member role updated to ${role}` });
