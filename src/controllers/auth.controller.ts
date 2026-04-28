@@ -479,17 +479,9 @@ export const googleCallback = catchAsync(async (req: Request, res: Response): Pr
   res.cookie("refreshToken", tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
   res.cookie("accessToken", tokens.accessToken, ACCESS_COOKIE_OPTIONS);
 
-  // Redirect to frontend (dashboard or join page)
-  const isFounder = user.organizations?.some((org: any) => org.orgId.toString() === user._id.toString() && org.role === "admin");
-  let redirectUrl = config.FRONTEND_URLS[0];
-
-  if (user.workspaces && user.workspaces.length > 0) {
-    redirectUrl = `${config.FRONTEND_URLS[0]}/workspace/${user.workspaces[0].workspaceId}`;
-  } else if (isFounder) {
-    redirectUrl = `${config.FRONTEND_URLS[0]}/workspace/setup`;
-  } else {
-    redirectUrl = `${config.FRONTEND_URLS[0]}/workspace/join`;
-  }
-
+  // Redirect back to the frontend's dedicated OAuth handler page
+  // We MUST pass the token in the URL so the frontend can manually set the cookie 
+  // to bypass cross-origin browser cookie blocking in production.
+  const redirectUrl = `${config.FRONTEND_URLS[0]}/oauth-success?token=${tokens.accessToken}`;
   res.redirect(redirectUrl);
 });
