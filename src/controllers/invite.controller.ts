@@ -22,17 +22,28 @@ import {
 // ─────────────────────────────────────────────────────
 
 function sanitizeInvite(invite: any): IInviteSafe {
+  let createdByStr = "";
+  if (invite.createdBy) {
+    // Handle populated User objects (from .populate("createdBy"))
+    if (typeof invite.createdBy === "object" && invite.createdBy._id) {
+      createdByStr = invite.createdBy._id.toString();
+    } else {
+      // Flat ObjectId (unpopulated)
+      createdByStr = invite.createdBy.toString();
+    }
+  }
+
   return {
-    id: invite._id.toString(),
-    organizationId: invite.organizationId.toString(),
-    workspaceId: invite.workspaceId.toString(),
-    code: invite.code,
-    expiresAt: invite.expiresAt.toISOString(),
-    createdBy: invite.createdBy.toString(),
-    maxUses: invite.maxUses,
-    uses: invite.uses,
-    isActive: invite.isActive,
-    createdAt: invite.createdAt.toISOString(),
+    id: invite._id?.toString() || "",
+    organizationId: invite.organizationId?.toString() || "",
+    workspaceId: invite.workspaceId?.toString() || "",
+    code: invite.code || "",
+    expiresAt: invite.expiresAt ? new Date(invite.expiresAt).toISOString() : new Date().toISOString(),
+    createdBy: createdByStr,
+    maxUses: invite.maxUses || 0,
+    uses: invite.uses || 0,
+    isActive: invite.isActive ?? true,
+    createdAt: invite.createdAt ? new Date(invite.createdAt).toISOString() : new Date().toISOString(),
   };
 }
 
