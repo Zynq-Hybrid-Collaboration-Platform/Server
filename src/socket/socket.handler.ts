@@ -160,6 +160,16 @@ export const setupSocketHandlers = (io: Server) => {
                 const message = await Message.findById(messageId);
                 if (!message) return socket.emit("error", { message: "Message not found" });
 
+                // Enforce single reaction per user: remove user from any other emoji
+                message.reactions.forEach((r) => {
+                    const uIdx = r.users.findIndex(id => id.toString() === userId.toString());
+                    if (uIdx > -1 && r.emoji !== emoji) {
+                        r.users.splice(uIdx, 1);
+                    }
+                });
+                // Remove empty reaction objects
+                message.reactions = message.reactions.filter(r => r.users.length > 0);
+
                 const reactionIndex = message.reactions.findIndex(r => r.emoji === emoji);
 
                 if (reactionIndex > -1) {
