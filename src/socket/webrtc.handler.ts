@@ -1,5 +1,8 @@
 import { Server, Socket } from "socket.io";
-import { joinRoom, leaveRoom, updateMediaState, findRoomBySocketId, getParticipants, Participant } from "./call.manager";
+import { joinRoom, leaveRoom, updateMediaState, findAllRoomsBySocketId, getParticipants, Participant } from "./call.manager";
+import { UserModel } from "../models/auth.model";
+import { config } from "../config/env";
+import { logger } from "../logger/logger";
 
 
 
@@ -7,17 +10,30 @@ export const setupWebRTCHandlers = (io: Server) => {
     io.on("connection", (socket: Socket) => {
         const user = (socket as any).user;
         if (!user) {
-            console.warn(`Socket connected without user metadata: ${socket.id}`);
+            logger.warn(`Socket connected without user metadata: ${socket.id}`);
             return;
         }
 
-        console.log(`WebRTC handler attached for user: ${user.userId} (${socket.id})`);
+        logger.info(`WebRTC handler attached for user: ${user.userId} (${socket.id})`);
 
         /**
          * Join a video/voice call in a specific channel or direct message room.
          */
-        socket.on("webrtc:join", (data: { roomId: string; micEnabled?: boolean; cameraEnabled?: boolean }) => {
+        socket.on("webrtc:join", async (data: { roomId: string; micEnabled?: boolean; cameraEnabled?: boolean }) => {
             const { roomId, micEnabled = true, cameraEnabled = true } = data;
+
+            // Fetch user metadata for enrichment
+            let name = "Unknown User";
+            let avatar = "";
+            try {
+                const userData = await UserModel.findById(user.userId).select("name avatar");
+                if (userData) {
+                    name = userData.name;
+                    avatar = userData.avatar || "";
+                }
+            } catch (err) {
+                logger.error("Failed to fetch user metadata for WebRTC participant", { error: err, userId: user.userId });
+            }
 
             const participant: Participant = {
                 userId: user.userId,
@@ -25,6 +41,8 @@ export const setupWebRTCHandlers = (io: Server) => {
                 micEnabled,
                 cameraEnabled,
                 isScreenSharing: false,
+                name,
+                avatar
             };
 
             // Join the socket.io room for broadcasting
@@ -32,6 +50,13 @@ export const setupWebRTCHandlers = (io: Server) => {
 
             // Add to call manager and get existing participants
             const others = joinRoom(roomId, participant);
+            
+            // Check for room size limit errors
+            if (!Array.isArray(others) && 'error' in others) {
+                socket.emit("webrtc:error", { message: others.error });
+                socket.leave(`webrtc-${roomId}`);
+                return;
+            }
             // 1. Send the current participant list back to the joiner
             // This allows the joiner to initiate WebRTC offers to everyone already in the room
             socket.emit("webrtc:participants", {
@@ -75,10 +100,41 @@ export const setupWebRTCHandlers = (io: Server) => {
 
 
         /**
+         * Dynamic TURN Credential Generation
+         */
+        socket.on("webrtc:get-ice-servers", () => {
+            const iceServers: { urls: string | string[]; username?: string; credential?: string }[] = [
+                { urls: "stun:stun.l.google.com:19302" },
+                { urls: "stun:stun1.l.google.com:19302" }
+            ];
+            
+            // Allow env-based TURN server config
+            if (config.TURN_URL && config.TURN_USERNAME && config.TURN_PASSWORD) {
+                iceServers.push({
+                    urls: config.TURN_URL,
+                    username: config.TURN_USERNAME,
+                    credential: config.TURN_PASSWORD
+                });
+            }
+
+            socket.emit("webrtc:ice-servers", { iceServers });
+        });
+
+        /**
          * Standard WebRTC signaling relay (Offer, Answer, ICE Candidates)
          */
         socket.on("webrtc:signal", (data: { targetSocketId: string; signal: any; roomId: string }) => {
             const { targetSocketId, signal, roomId } = data;
+
+            // Security: verify both sender and target are in the same room
+            const participants = getParticipants(roomId);
+            const senderInRoom = participants.some(p => p.socketId === socket.id);
+            const targetInRoom = participants.some(p => p.socketId === targetSocketId);
+
+            if (!senderInRoom || !targetInRoom) {
+                logger.warn(`Unauthorized WebRTC signal attempt from ${socket.id} to ${targetSocketId} in room ${roomId}`);
+                return;
+            }
 
             // Relay the signal to the specific target peer
             io.to(targetSocketId).emit("webrtc:signal", {
@@ -154,12 +210,13 @@ export const setupWebRTCHandlers = (io: Server) => {
          * Handle disconnect - ensure cleanup
          */
         socket.on("disconnect", () => {
-            const roomId = findRoomBySocketId(socket.id);
+            const roomIds = findAllRoomsBySocketId(socket.id);
 
-            if (roomId) {
+            roomIds.forEach(roomId => {
                 leaveCall(roomId);
-            }
-            console.log(`User ${user.userId} disconnected - cleaned up WebRTC state`);
+            });
+            
+            logger.info(`User ${user.userId} disconnected - cleaned up WebRTC state for rooms: ${roomIds.join(", ")}`);
         });
     });
 };

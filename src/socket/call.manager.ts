@@ -1,11 +1,15 @@
 import { Socket } from "socket.io";
 
+export const MAX_WEBRTC_PARTICIPANTS = 6;
+
 export interface Participant {
     userId: string;
     socketId: string;
     micEnabled: boolean;
     cameraEnabled: boolean;
     isScreenSharing: boolean;
+    name?: string;
+    avatar?: string;
 }
 
 export interface CallRoom {
@@ -19,11 +23,17 @@ const rooms: Map<string, CallRoom> = new Map();
 /**
  * Joins a participant to a room. Creates the room if it doesn't exist.
  */
-export const joinRoom = (roomId: string, participant: Participant): Participant[] => {
+export const joinRoom = (roomId: string, participant: Participant): Participant[] | { error: string } => {
     if (!rooms.has(roomId)) {
         rooms.set(roomId, { id: roomId, participants: new Map() });
     }
     const room = rooms.get(roomId)!;
+    
+    // Enforce Room Size Limits (Mesh Protection)
+    if (room.participants.size >= MAX_WEBRTC_PARTICIPANTS && !room.participants.has(participant.socketId)) {
+        return { error: `Room is full. Maximum ${MAX_WEBRTC_PARTICIPANTS} participants allowed.` };
+    }
+
     room.participants.set(participant.socketId, participant);
     // Return current list of participants (excluding the joiner)
     return Array.from(room.participants.values()).filter(p => p.socketId !== participant.socketId);
@@ -57,16 +67,32 @@ export const updateMediaState = (roomId: string, socketId: string, updates: Part
 };
 
 /**
- * Finds a room by socket ID (useful for disconnects).
+ * Finds all rooms a socket is part of (useful for complete disconnect cleanup).
  */
-export const findRoomBySocketId = (socketId: string): string | null => {
+export const findAllRoomsBySocketId = (socketId: string): string[] => {
+    const foundRooms: string[] = [];
     for (const [roomId, room] of rooms.entries()) {
         if (room.participants.has(socketId)) {
-            return roomId;
+            foundRooms.push(roomId);
         }
     }
-    return null;
+    return foundRooms;
 };
+
+/**
+ * Garbage collection: removes empty rooms.
+ * Can be called periodically to ensure memory is freed for orphaned rooms.
+ */
+export const cleanupEmptyRooms = () => {
+    for (const [roomId, room] of rooms.entries()) {
+        if (room.participants.size === 0) {
+            rooms.delete(roomId);
+        }
+    }
+};
+
+// Periodic GC every 5 minutes
+setInterval(cleanupEmptyRooms, 5 * 60 * 1000);
 
 /**
  * Gets all participants in a room.
@@ -80,6 +106,6 @@ export const callManager = {
     joinRoom,
     leaveRoom,
     updateMediaState,
-    findRoomBySocketId,
+    findAllRoomsBySocketId,
     getParticipants
 };

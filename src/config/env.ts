@@ -78,6 +78,11 @@ export const config = {
   CLOUDINARY_API_KEY: optionalEnv("CLOUDINARY_API_KEY", ""),
   CLOUDINARY_API_SECRET: optionalEnv("CLOUDINARY_API_SECRET", ""),
 
+  // ── WebRTC / TURN ────────────────────────────────────
+  TURN_URL: optionalEnv("TURN_URL", ""),
+  TURN_USERNAME: optionalEnv("TURN_USERNAME", ""),
+  TURN_PASSWORD: optionalEnv("TURN_PASSWORD", ""),
+
   // ── Environment Predicates ───────────────────────────
 
   isDevelopment(): boolean {

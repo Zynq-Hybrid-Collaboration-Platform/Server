@@ -250,39 +250,7 @@ export const setupSocketHandlers = (io: Server) => {
             });
         });
 
-        // --- Video Calling & Screen Sharing (WebRTC Signaling) ---
 
-        // Join Video
-        socket.on("video:join", (data: { channelId: string }) => {
-            const { channelId } = data;
-            socket.join(`video-${channelId}`);
-
-            // Notify others in the video room
-            socket.to(`video-${channelId}`).emit("video:user-joined", {
-                userId: user.userId,
-                socketId: socket.id
-            });
-
-            console.log(`User ${user.userId} joined video room: ${channelId}`);
-        });
-
-        // Signaling (Offer, Answer, ICE Candidates)
-        socket.on("video:signal", (data: { targetSocketId: string; signal: any }) => {
-            io.to(data.targetSocketId).emit("video:signal", {
-                senderSocketId: socket.id,
-                userId: user.userId,
-                signal: data.signal
-            });
-        });
-
-        // Leave Video Room
-        socket.on("video:leave", (data: { channelId: string }) => {
-            socket.leave(`video-${data.channelId}`);
-            socket.to(`video-${data.channelId}`).emit("video:user-left", {
-                userId: user.userId,
-                socketId: socket.id
-            });
-        });
         socket.on("disconnect", () => {
             console.log(`User disconnected: ${user.userId}`);
         });
