@@ -6,6 +6,8 @@ import { Channel } from "../models/channel.model";
 import Workspace from "../models/workspace.model";
 import { Types } from "mongoose";
 import { sendMessageSchema, pinMessageSchema, reactMessageSchema } from "../validators/message.validator";
+import { Notification, NotificationType } from "../models/notification.model";
+import { UserModel } from "../models/auth.model";
 
 interface SocketUser {
     userId: string;
@@ -62,6 +64,9 @@ export const setupSocketHandlers = (io: Server) => {
         const user = (socket as any).user as SocketUser;
         console.log(`User connected: ${user.userId} (Socket ID: ${socket.id})`);
 
+        // Join personal room for notifications
+        socket.join(`user_${user.userId}`);
+
         // Join a channel room
         socket.on("join-channel", (channelId: string) => {
             socket.join(channelId);
@@ -90,7 +95,7 @@ export const setupSocketHandlers = (io: Server) => {
                     attachments: attachments || [],
                     replyTo: replyTo ? new Types.ObjectId(replyTo) : null,
                 });
-                
+
                 const populatedMessage = await Message.findById(message._id)
                     .populate("senderId", "name avatar")
                     .populate({
@@ -100,6 +105,31 @@ export const setupSocketHandlers = (io: Server) => {
 
                 // Broadcast to everyone in the room
                 io.to(channelId).emit("new-message", populatedMessage);
+
+                // Handle Mentions
+                const mentions = content.match(/@(\w+)/g);
+                if (mentions) {
+                    const usernames = mentions.map((m: any) => m.substring(1));
+                    // Find users in the database
+                    const mentionedUsers = await UserModel.find({ username: { $in: usernames } });
+
+                    for (const mentionedUser of mentionedUsers) {
+                        // Don't notify the sender themselves
+                        if (mentionedUser._id.toString() !== user.userId) {
+                            const notification = await Notification.create({
+                                recipientId: mentionedUser._id,
+                                senderId: new Types.ObjectId(user.userId),
+                                type: NotificationType.MENTION,
+                                title: "New Mention",
+                                message: `${populatedMessage?.senderId?.name || "Someone"} mentioned you in a message`,
+                                metadata: { channelId, messageId: message._id },
+                            });
+
+                            const populatedNotification = await notification.populate("senderId", "name avatar");
+                            io.to(`user_${mentionedUser._id}`).emit("new-notification", populatedNotification);
+                        }
+                    }
+                }
             } catch (error) {
                 console.error("Error saving message:", error);
                 socket.emit("error", { message: "Failed to send message" });
@@ -191,12 +221,12 @@ export const setupSocketHandlers = (io: Server) => {
                 }
 
                 await message.save();
-                
+
                 const updatedMessage = await Message.findById(messageId).populate("reactions.users", "name avatar");
-                
-                io.to(channelId).emit("message-reaction", { 
-                    messageId, 
-                    reactions: updatedMessage?.reactions || [] 
+
+                io.to(channelId).emit("message-reaction", {
+                    messageId,
+                    reactions: updatedMessage?.reactions || []
                 });
             } catch (error) {
                 console.error("Error reacting to message:", error);
