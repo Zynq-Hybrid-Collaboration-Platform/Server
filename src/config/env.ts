@@ -83,6 +83,9 @@ export const config = {
   TURN_USERNAME: optionalEnv("TURN_USERNAME", ""),
   TURN_PASSWORD: optionalEnv("TURN_PASSWORD", ""),
 
+  // ── Redis ───────────────────────────────────────────
+  REDIS_URL: optionalEnv("REDIS_URL", "redis://localhost:6379"),
+
   // ── Environment Predicates ───────────────────────────
 
   isDevelopment(): boolean {

@@ -1,11 +1,14 @@
 import http from "http";
 import { createApp } from "./app";
 import { connectDB, disconnectDB } from "./database/connection";
+import { connectRedis } from "./database/redis";
 import { config } from "./config/env";
 import { logger } from "./logger/logger";
 import { Server } from "socket.io";
 import { setupSocketHandlers } from "./socket/socket.handler";
 import { setupWebRTCHandlers } from "./socket/webrtc.handler";
+import { createClient } from "redis";
+import { createAdapter } from "@socket.io/redis-adapter";
 
 /**
  * Server bootstrap.
@@ -20,13 +23,22 @@ import { setupWebRTCHandlers } from "./socket/webrtc.handler";
 async function bootstrap(): Promise<void> {
   // 1. Connect to database
   await connectDB();
+  await connectRedis();
 
   // 2. Create Express app
   const app = createApp();
 
+  // 2.5 Initialize Redis for Socket.io adapter
+  const pubClient = createClient({ url: config.REDIS_URL });
+  const subClient = pubClient.duplicate();
+
+  await Promise.all([pubClient.connect(), subClient.connect()]);
+  logger.info("Redis connected for Socket.io adapter");
+
   // 3. Create HTTP server and initialize Socket.io
   const httpServer = http.createServer(app);
   const io = new Server(httpServer, {
+    transports: ["websocket"], // Enforce WebSocket only
     cors: {
       origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
         if (!origin || config.FRONTEND_URLS.indexOf(origin) !== -1 || config.isDevelopment()) {
@@ -36,8 +48,11 @@ async function bootstrap(): Promise<void> {
         }
       },
       methods: ["GET", "POST"],
+      credentials: true,
     },
   });
+
+  io.adapter(createAdapter(pubClient, subClient));
 
   app.set("io", io);
 

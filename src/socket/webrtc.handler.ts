@@ -49,7 +49,7 @@ export const setupWebRTCHandlers = (io: Server) => {
             socket.join(`webrtc-${roomId}`);
 
             // Add to call manager and get existing participants
-            const others = joinRoom(roomId, participant);
+            const others = await joinRoom(roomId, participant);
             
             // Check for room size limit errors
             if (!Array.isArray(others) && 'error' in others) {
@@ -82,9 +82,9 @@ export const setupWebRTCHandlers = (io: Server) => {
         /**
          * Check if a call is ongoing in a room
          */
-        socket.on("webrtc:check-call", (data: { roomId: string }, callback?: (res: { isOngoing: boolean; participants: Participant[] }) => void) => {
+        socket.on("webrtc:check-call", async (data: { roomId: string }, callback?: (res: { isOngoing: boolean; participants: Participant[] }) => void) => {
             const { roomId } = data;
-            const participants = getParticipants(roomId);
+            const participants = await getParticipants(roomId);
             const isOngoing = participants.length > 0;
 
             const response = { isOngoing, participants };
@@ -123,11 +123,11 @@ export const setupWebRTCHandlers = (io: Server) => {
         /**
          * Standard WebRTC signaling relay (Offer, Answer, ICE Candidates)
          */
-        socket.on("webrtc:signal", (data: { targetSocketId: string; signal: any; roomId: string }) => {
+        socket.on("webrtc:signal", async (data: { targetSocketId: string; signal: any; roomId: string }) => {
             const { targetSocketId, signal, roomId } = data;
 
             // Security: verify both sender and target are in the same room
-            const participants = getParticipants(roomId);
+            const participants = await getParticipants(roomId);
             const senderInRoom = participants.some(p => p.socketId === socket.id);
             const targetInRoom = participants.some(p => p.socketId === targetSocketId);
 
@@ -148,10 +148,10 @@ export const setupWebRTCHandlers = (io: Server) => {
         /**
          * Update media state (Mic mute/unmute, Camera on/off)
          */
-        socket.on("webrtc:toggle-media", (data: { roomId: string; micEnabled?: boolean; cameraEnabled?: boolean }) => {
+        socket.on("webrtc:toggle-media", async (data: { roomId: string; micEnabled?: boolean; cameraEnabled?: boolean }) => {
             const { roomId, micEnabled, cameraEnabled } = data;
 
-            const updated = updateMediaState(roomId, socket.id, { micEnabled, cameraEnabled });
+            const updated = await updateMediaState(roomId, socket.id, { micEnabled, cameraEnabled });
 
             if (updated) {
                 socket.to(`webrtc-${roomId}`).emit("webrtc:media-state-changed", {
@@ -166,10 +166,10 @@ export const setupWebRTCHandlers = (io: Server) => {
         /**
          * Toggle Screen Sharing
          */
-        socket.on("webrtc:toggle-screen-share", (data: { roomId: string; isSharing: boolean }) => {
+        socket.on("webrtc:toggle-screen-share", async (data: { roomId: string; isSharing: boolean }) => {
             const { roomId, isSharing } = data;
 
-            const updated = updateMediaState(roomId, socket.id, { isScreenSharing: isSharing });
+            const updated = await updateMediaState(roomId, socket.id, { isScreenSharing: isSharing });
 
             if (updated) {
                 socket.to(`webrtc-${roomId}`).emit("webrtc:screen-share-changed", {
@@ -183,13 +183,13 @@ export const setupWebRTCHandlers = (io: Server) => {
         /**
          * leave a call
          */
-        const leaveCall = (roomId: string) => {
-            const participant = leaveRoom(roomId, socket.id);
+        const leaveCall = async (roomId: string) => {
+            const participant = await leaveRoom(roomId, socket.id);
 
             if (participant) {
                 socket.leave(`webrtc-${roomId}`);
                 // 2. Notify the entire channel if the call ended (last person left)
-                const remaining = getParticipants(roomId);
+                const remaining = await getParticipants(roomId);
                 if (remaining.length === 0) {
                     io.to(roomId).emit("webrtc:call-status-changed", {
                         roomId,
@@ -202,19 +202,19 @@ export const setupWebRTCHandlers = (io: Server) => {
         };
 
 
-        socket.on("webrtc:leave", (data: { roomId: string }) => {
-            leaveCall(data.roomId);
+        socket.on("webrtc:leave", async (data: { roomId: string }) => {
+            await leaveCall(data.roomId);
         });
 
         /**
          * Handle disconnect - ensure cleanup
          */
-        socket.on("disconnect", () => {
-            const roomIds = findAllRoomsBySocketId(socket.id);
+        socket.on("disconnect", async () => {
+            const roomIds = await findAllRoomsBySocketId(socket.id);
 
-            roomIds.forEach(roomId => {
-                leaveCall(roomId);
-            });
+            for (const roomId of roomIds) {
+                await leaveCall(roomId);
+            }
             
             logger.info(`User ${user.userId} disconnected - cleaned up WebRTC state for rooms: ${roomIds.join(", ")}`);
         });
