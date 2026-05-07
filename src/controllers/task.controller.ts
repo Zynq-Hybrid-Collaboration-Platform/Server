@@ -8,6 +8,8 @@ import { sendSuccess } from "../utils/response";
 import { AuthorizationError } from "../errors/AuthorizationError";
 import { NotFoundError } from "../errors/NotFoundError";
 import { ValidationError } from "../errors/ValidationError";
+import { NotificationType } from "../models/notification.model";
+import { createAndSendNotification } from "./notification.controller";
 
 // ─────────────────────────────────────────────────────────
 // Helpers
@@ -105,6 +107,23 @@ export const createTask = catchAsync(
     if (io) {
       io.to(channelId.toString()).emit("task:created", { task: populated });
     }
+
+    // Send notifications to assignees
+    if (populated && populated.assignees && populated.assignees.length > 0) {
+      for (const assignee of populated.assignees as any[]) {
+        if (assignee._id.toString() !== user.userId) {
+          await createAndSendNotification(req, {
+            recipientId: assignee._id,
+            senderId: user.userId,
+            type: NotificationType.TASK_ASSIGNED,
+            title: "New Task Assigned",
+            message: `You have been assigned to: ${populated.title}`,
+            metadata: { taskId: populated._id, channelId: populated.channelId },
+          });
+        }
+      }
+    }
+
     sendSuccess(res, { task: populated }, 201);
   },
 );
@@ -356,6 +375,20 @@ export const assignTask = catchAsync(
     const io = req.app.get("io");
     if (io && updated) {
       io.to(updated.channelId.toString()).emit("task:updated", { task: updated });
+
+      // Notify only the newly assigned users
+      for (const assigneeId of assignees) {
+        if (assigneeId !== user.userId) {
+          await createAndSendNotification(req, {
+            recipientId: assigneeId,
+            senderId: user.userId,
+            type: NotificationType.TASK_ASSIGNED,
+            title: "New Task Assigned",
+            message: `You have been assigned to: ${updated.title}`,
+            metadata: { taskId: updated._id, channelId: updated.channelId },
+          });
+        }
+      }
     }
 
     sendSuccess(res, { task: updated });

@@ -9,6 +9,8 @@ import { Channel, ChannelType } from "../models/channel.model";
 import { IAuthenticatedRequest } from "../types/request.types";
 import { catchAsync } from "../middleware/async-handler";
 import { sendSuccess } from "../utils/response";
+import { NotificationType } from "../models/notification.model";
+import { createAndSendNotification } from "./notification.controller";
 
 export const createWorkspaceController = catchAsync(async (req: IAuthenticatedRequest, res: Response) => {
   const { orgId, name } = req.body;
@@ -115,6 +117,19 @@ export const addMemberController = catchAsync(async (req: Request, res: Response
   });
 
   await workspace.save();
+
+  // Send notification to the added member
+  const requester = (req as any).user;
+  if (requester && userId !== requester.userId) {
+    await createAndSendNotification(req, {
+      recipientId: userId,
+      senderId: requester.userId,
+      type: NotificationType.INVITE,
+      title: "Workspace Invitation",
+      message: `You have been added to workspace: ${workspace.name}`,
+      metadata: { workspaceId: workspace._id.toString() },
+    });
+  }
 
   sendSuccess(res, { 
     message: "Member added to workspace",
