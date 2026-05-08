@@ -8,6 +8,7 @@ import { Types } from "mongoose";
 import { sendMessageSchema, pinMessageSchema, reactMessageSchema } from "../validators/message.validator";
 import { Notification, NotificationType } from "../models/notification.model";
 import { UserModel } from "../models/auth.model";
+import { createAndSendNotification } from "../controllers/notification.controller";
 
 interface SocketUser {
     userId: string;
@@ -106,6 +107,26 @@ export const setupSocketHandlers = (io: Server) => {
                 // Broadcast to everyone in the room
                 io.to(channelId).emit("new-message", populatedMessage);
 
+                const mockReq = { app: { get: (key: string) => key === "io" ? io : null } };
+
+                // Handle Replies
+                if (replyTo) {
+                    const originalMessage = await Message.findById(replyTo);
+                    if (originalMessage && originalMessage.senderId.toString() !== user.userId) {
+                         const channel = await Channel.findById(channelId);
+                         const sender = await UserModel.findById(user.userId);
+                         
+                         await createAndSendNotification(mockReq, {
+                            recipientId: originalMessage.senderId.toString(),
+                            senderId: user.userId,
+                            type: NotificationType.MESSAGE_REPLY,
+                            title: "New Reply",
+                            message: `${sender?.name || "Someone"} replied to your message in #${channel?.name || "a channel"}`,
+                            metadata: { channelId, messageId: message._id, originalMessageId: replyTo },
+                        });
+                    }
+                }
+
                 // Handle Mentions
                 const mentions = content.match(/@(\w+)/g);
                 if (mentions) {
@@ -116,17 +137,14 @@ export const setupSocketHandlers = (io: Server) => {
                     for (const mentionedUser of mentionedUsers) {
                         // Don't notify the sender themselves
                         if (mentionedUser._id.toString() !== user.userId) {
-                            const notification = await Notification.create({
-                                recipientId: mentionedUser._id,
-                                senderId: new Types.ObjectId(user.userId),
+                            await createAndSendNotification(mockReq, {
+                                recipientId: mentionedUser._id.toString(),
+                                senderId: user.userId,
                                 type: NotificationType.MENTION,
                                 title: "New Mention",
                                 message: `${populatedMessage?.senderId?.name || "Someone"} mentioned you in a message`,
                                 metadata: { channelId, messageId: message._id },
                             });
-
-                            const populatedNotification = await notification.populate("senderId", "name avatar");
-                            io.to(`user_${mentionedUser._id}`).emit("new-notification", populatedNotification);
                         }
                     }
                 }
