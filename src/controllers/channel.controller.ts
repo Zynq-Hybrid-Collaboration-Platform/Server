@@ -6,6 +6,9 @@ import { catchAsync } from "../middleware/async-handler";
 import { sendSuccess } from "../utils/response";
 import { AuthorizationError } from "../errors/AuthorizationError";
 import { NotFoundError } from "../errors/NotFoundError";
+import { NotificationType } from "../models/notification.model";
+import { createAndSendNotification } from "./notification.controller";
+import { UserModel as User } from "../models/auth.model";
 
 // Workspace cleanup logic
 export const deleteChannelsByWorkspace = async (workspaceId: string): Promise<any> => {
@@ -33,6 +36,25 @@ export const createChannel = catchAsync(async (req: Request, res: Response): Pro
     parentId: parentId ? new Types.ObjectId(parentId) : null,
     allowedRoles,
   });
+
+  // Notify workspace members
+  const creator = await User.findById(user.userId);
+  const creatorName = creator?.name || "Someone";
+  
+  // For simplicity, notify all workspace members if it's a public channel (no allowedRoles)
+  // or if the user is an admin. In a more complex app, we'd check visibility.
+  for (const member of workspace.members) {
+      if (member.userId.toString() === user.userId) continue;
+      
+      await createAndSendNotification(req, {
+          recipientId: member.userId.toString(),
+          senderId: user.userId,
+          type: NotificationType.CHANNEL_CREATED,
+          title: "New Channel Created",
+          message: `A new channel #${channel.name} was created by ${creatorName}.`,
+          metadata: { workspaceId, channelId: channel._id.toString() },
+      });
+  }
 
   sendSuccess(res, { channel }, 201);
 });
@@ -110,6 +132,22 @@ export const deleteChannel = catchAsync(async (req: Request, res: Response): Pro
   }
 
   await Channel.findByIdAndDelete(new Types.ObjectId(channelId));
+
+  // Notify all channel members about deletion
+  if (channel.members) {
+      for (const memberId of channel.members) {
+          if (memberId.toString() === user.userId) continue;
+          await createAndSendNotification(req, {
+              recipientId: memberId.toString(),
+              senderId: user.userId,
+              type: NotificationType.CHANNEL_DELETED,
+              title: "Channel Deleted",
+              message: `The channel #${channel.name} has been deleted.`,
+              metadata: { workspaceId: channel.workspaceId.toString() },
+          });
+      }
+  }
+
   sendSuccess(res, { message: "Channel deleted successfully" });
 });
 
@@ -126,6 +164,39 @@ export const addChannelMember = catchAsync(async (req: Request, res: Response): 
 
   if (!channel) throw new NotFoundError("Channel");
 
+  // Send notifications
+  const requesterId = (req as any).user.userId;
+  const [requester, addedUser] = await Promise.all([
+      User.findById(requesterId),
+      User.findById(userId)
+  ]);
+  const addedUserName = addedUser?.name || "A user";
+
+  // Recipient 1: The User being added
+  await createAndSendNotification(req, {
+      recipientId: userId,
+      senderId: requesterId,
+      type: NotificationType.CHANNEL_MEMBER_ADDED,
+      title: "Added to Channel",
+      message: `You have been added to the channel #${channel.name}.`,
+      metadata: { channelId: channel._id.toString(), workspaceId: channel.workspaceId.toString() },
+  });
+
+  // Recipient 2: Existing Channel Members
+  if (channel.members) {
+      for (const memberId of channel.members) {
+          if (memberId.toString() === requesterId || memberId.toString() === userId.toString()) continue;
+          await createAndSendNotification(req, {
+              recipientId: memberId.toString(),
+              senderId: requesterId,
+              type: NotificationType.CHANNEL_MEMBER_ADDED,
+              title: "New Channel Member",
+              message: `${addedUserName} has joined #${channel.name}.`,
+              metadata: { channelId: channel._id.toString() },
+          });
+      }
+  }
+
   sendSuccess(res, { channel });
 });
 
@@ -140,6 +211,17 @@ export const removeChannelMember = catchAsync(async (req: Request, res: Response
   );
 
   if (!channel) throw new NotFoundError("Channel");
+
+  // Notify the removed user
+  const requesterId = (req as any).user.userId;
+  await createAndSendNotification(req, {
+      recipientId: userId,
+      senderId: requesterId,
+      type: NotificationType.CHANNEL_MEMBER_REMOVED,
+      title: "Removed from Channel",
+      message: `You have been removed from #${channel.name}.`,
+      metadata: { channelId: channel._id.toString() },
+  });
 
   sendSuccess(res, { channel });
 });

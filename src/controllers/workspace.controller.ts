@@ -88,6 +88,20 @@ export const deleteWorkspaceController = catchAsync(async (req: Request, res: Re
 
   await channelController.deleteChannelsByWorkspace(workspaceId);
 
+  // Notify all members about workspace deletion
+  const requesterId = (req as any).user.userId;
+  for (const member of workspace.members) {
+      if (member.userId.toString() === requesterId) continue;
+      await createAndSendNotification(req, {
+          recipientId: member.userId.toString(),
+          senderId: requesterId,
+          type: NotificationType.WORKSPACE_DELETED,
+          title: "Workspace Deleted",
+          message: `The workspace ${workspace.name} has been deleted.`,
+          metadata: { workspaceName: workspace.name },
+      });
+  }
+
   sendSuccess(res, { 
     message: "Workspace deleted successfully",
     workspace 
@@ -118,17 +132,38 @@ export const addMemberController = catchAsync(async (req: Request, res: Response
 
   await workspace.save();
 
-  // Send notification to the added member
+  // Send notifications
   const requester = (req as any).user;
-  if (requester && userId !== requester.userId) {
+  if (requester) {
+    const [adminUser, addedUser] = await Promise.all([
+      User.findById(requester.userId),
+      User.findById(userId)
+    ]);
+    const adminName = adminUser?.name || "An admin";
+    const addedUserName = addedUser?.name || "A user";
+
+    // Recipient 1: The User being added
     await createAndSendNotification(req, {
       recipientId: userId,
       senderId: requester.userId,
-      type: NotificationType.INVITE,
-      title: "Workspace Invitation",
-      message: `You have been added to workspace: ${workspace.name}`,
+      type: NotificationType.WORKSPACE_MEMBER_ADDED,
+      title: "Added to Workspace",
+      message: `${adminName} added you to the workspace: ${workspace.name}`,
       metadata: { workspaceId: workspace._id.toString() },
     });
+
+    // Recipient 2: Workspace Owner & Admins
+    const adminRecipients = workspace.members.filter(m => (m.role === "owner" || m.role === "admin") && m.userId.toString() !== requester.userId);
+    for (const recipient of adminRecipients) {
+         await createAndSendNotification(req, {
+            recipientId: recipient.userId.toString(),
+            senderId: requester.userId,
+            type: NotificationType.WORKSPACE_MEMBER_ADDED,
+            title: "Member Added",
+            message: `${adminName} added ${addedUserName} to the workspace.`,
+            metadata: { workspaceId: workspace._id.toString() },
+        });
+    }
   }
 
   sendSuccess(res, { 
@@ -162,6 +197,16 @@ export const removeMemberController = catchAsync(async (req: IAuthenticatedReque
     { $pull: { members: new Types.ObjectId(userId) } }
   );
 
+  // Notify the removed member
+  await createAndSendNotification(req, {
+      recipientId: userId,
+      senderId: requesterId,
+      type: NotificationType.WORKSPACE_MEMBER_REMOVED,
+      title: "Removed from Workspace",
+      message: `You have been removed from ${workspace.name}.`,
+      metadata: { workspaceId: workspace._id.toString() },
+  });
+
   sendSuccess(res, { message: "Member removed from workspace and all channels" });
 });
 
@@ -193,6 +238,16 @@ export const updateMemberRoleController = catchAsync(async (req: IAuthenticatedR
   });
 
   await workspace.save();
+
+  // Notify the user about their role update
+  await createAndSendNotification(req, {
+      recipientId: userId,
+      senderId: req.user.userId,
+      type: NotificationType.WORKSPACE_ROLE_UPDATED,
+      title: "Role Updated",
+      message: `Your role in ${workspace.name} has been updated to ${role}.`,
+      metadata: { workspaceId: workspace._id.toString(), newRole: role },
+  });
 
   sendSuccess(res, { message: `Member role updated to ${role}` });
 });

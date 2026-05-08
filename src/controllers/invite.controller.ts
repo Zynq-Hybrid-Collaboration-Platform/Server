@@ -16,6 +16,9 @@ import {
   ValidationError,
   ConflictError,
 } from "../errors";
+import { NotificationType } from "../models/notification.model";
+import { createAndSendNotification } from "./notification.controller";
+import { UserModel as User } from "../models/auth.model";
 
 // ─────────────────────────────────────────────────────
 // Helpers
@@ -218,6 +221,23 @@ export const joinWorkspace = catchAsync(async (req: IAuthenticatedRequest, res: 
   await InviteCode.findByIdAndUpdate(invite._id, { $inc: { uses: 1 } });
   if (invite.maxUses > 0 && invite.uses + 1 >= invite.maxUses) {
     await InviteCode.findByIdAndUpdate(invite._id, { isActive: false });
+  }
+
+  // Notify admins and owner
+  const joiningUser = await User.findById(userId);
+  const userName = joiningUser?.name || "A new user";
+  
+  const admins = workspace.members.filter(m => m.role === "owner" || m.role === "admin");
+  
+  for (const admin of admins) {
+      await createAndSendNotification(req, {
+          recipientId: admin.userId.toString(),
+          senderId: userId,
+          type: NotificationType.WORKSPACE_JOIN,
+          title: "New Workspace Member",
+          message: `${userName} has joined the workspace.`,
+          metadata: { workspaceId: workspace._id.toString(), workspaceName: workspace.name }
+      });
   }
 
   sendSuccess(res, {
