@@ -10,6 +10,7 @@ import { NotFoundError } from "../errors/NotFoundError";
 import { ValidationError } from "../errors/ValidationError";
 import { NotificationType } from "../models/notification.model";
 import { createAndSendNotification } from "./notification.controller";
+import { UserModel as User } from "../models/auth.model";
 
 // ─────────────────────────────────────────────────────────
 // Helpers
@@ -117,7 +118,7 @@ export const createTask = catchAsync(
             senderId: user.userId,
             type: NotificationType.TASK_ASSIGNED,
             title: "New Task Assigned",
-            message: `You have been assigned to: ${populated.title}`,
+            message: `You have been assigned to a new task: ${populated.title}`,
             metadata: { taskId: populated._id, channelId: populated.channelId },
           });
         }
@@ -384,7 +385,7 @@ export const assignTask = catchAsync(
             senderId: user.userId,
             type: NotificationType.TASK_ASSIGNED,
             title: "New Task Assigned",
-            message: `You have been assigned to: ${updated.title}`,
+            message: `You have been assigned to a new task: ${updated.title}`,
             metadata: { taskId: updated._id, channelId: updated.channelId },
           });
         }
@@ -487,6 +488,30 @@ export const updateTaskStatus = catchAsync(
     const io = req.app.get("io");
     if (io && updated) {
       io.to(updated.channelId.toString()).emit("task:updated", { task: updated });
+
+      // Notify assignees and creator
+      const updater = await User.findById(user.userId);
+      const updaterName = updater?.name || "Someone";
+
+      const recipients = new Set<string>();
+      if (updated.assignees) {
+        updated.assignees.forEach((a: any) => recipients.add(a._id.toString()));
+      }
+      if (updated.createdBy) {
+        recipients.add(updated.createdBy.toString());
+      }
+      recipients.delete(user.userId);
+
+      for (const recipientId of recipients) {
+        await createAndSendNotification(req, {
+          recipientId,
+          senderId: user.userId,
+          type: NotificationType.TASK_STATUS_CHANGED,
+          title: "Task Status Updated",
+          message: `${updaterName} moved task ${updated.title} to ${status}.`,
+          metadata: { taskId: updated._id, channelId: updated.channelId, status },
+        });
+      }
     }
 
     sendSuccess(res, { task: updated });
