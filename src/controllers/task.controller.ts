@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { Types } from "mongoose";
-import { Task, TaskStatus } from "../models/task.model";
+import { Task } from "../models/task.model";
+import { Status } from "../models/status.model";
 import { Channel, ChannelType } from "../models/channel.model";
 import WorkspaceModel from "../models/workspace.model";
 import { catchAsync } from "../middleware/async-handler";
@@ -86,12 +87,20 @@ export const createTask = catchAsync(
     if (assignees && assignees.length > 0) {
       await validateChannelAssignees(channel, assignees);
     }
-    // 4. Create the task
+    // 4. Determine Status
+    let finalStatusId = req.body.statusId;
+    if (!finalStatusId) {
+      const defaultStatus = await Status.findOne({ workspaceId: channel.workspaceId }).sort({ order: 1 });
+      if (!defaultStatus) throw new ValidationError("No statuses found for this workspace. Please create statuses first.");
+      finalStatusId = defaultStatus._id;
+    }
+
+    // 5. Create the task
     const task = await Task.create({
       title,
       description: description || "",
       priority,
-      status: TaskStatus.TODO,
+      statusId: new Types.ObjectId(finalStatusId),
       channelId: new Types.ObjectId(channelId),
       workspaceId: channel.workspaceId,
       orgId: workspace.orgId,
@@ -99,10 +108,11 @@ export const createTask = catchAsync(
       assignees: (assignees || []).map((id: string) => new Types.ObjectId(id)),
       dueDate: dueDate || null,
     });
-    // 5. Populate and return
+    // 6. Populate and return
     const populated = await Task.findById(task._id)
       .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar");
+      .populate("createdBy", "name email avatar")
+      .populate("statusId");
 
     const io = req.app.get("io");
     if (io) {
@@ -143,7 +153,7 @@ export const getTasksByChannel = catchAsync(
     const filter: any = { channelId: new Types.ObjectId(channelId) };
 
     if (status && typeof status === "string") {
-      filter.status = status.toUpperCase();
+      filter.statusId = new Types.ObjectId(status);
     }
 
     if (assignee && typeof assignee === "string") {
@@ -162,6 +172,7 @@ export const getTasksByChannel = catchAsync(
       Task.find(filter)
         .populate("assignees", "name email avatar")
         .populate("createdBy", "name email avatar")
+        .populate("statusId")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum),
@@ -196,7 +207,7 @@ export const getTasksByWorkspace = catchAsync(
     const filter: any = { workspaceId: new Types.ObjectId(workspaceId) };
 
     if (status && typeof status === "string") {
-      filter.status = status.toUpperCase();
+      filter.statusId = new Types.ObjectId(status);
     }
     if (priority && typeof priority === "string") {
       filter.priority = priority.toUpperCase();
@@ -205,6 +216,7 @@ export const getTasksByWorkspace = catchAsync(
     const tasks = await Task.find(filter)
       .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar")
+      .populate("statusId")
       .sort({ createdAt: -1 });
 
     sendSuccess(res, { tasks });
@@ -223,7 +235,7 @@ export const getMyTasks = catchAsync(
     const filter: any = { assignees: new Types.ObjectId(user.userId) };
 
     if (status && typeof status === "string") {
-      filter.status = status.toUpperCase();
+      filter.statusId = new Types.ObjectId(status);
     }
     if (priority && typeof priority === "string") {
       filter.priority = priority.toUpperCase();
@@ -233,6 +245,7 @@ export const getMyTasks = catchAsync(
       .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar")
       .populate("channelId", "name")
+      .populate("statusId")
       .sort({ createdAt: -1 });
 
     sendSuccess(res, { tasks });
@@ -250,7 +263,8 @@ export const getTaskById = catchAsync(
     const task = await Task.findById(taskId)
       .populate("assignees", "name email avatar")
       .populate("createdBy", "name email avatar")
-      .populate("channelId", "name type");
+      .populate("channelId", "name type")
+      .populate("statusId");
 
     if (!task) throw new NotFoundError("Task");
 
@@ -288,7 +302,8 @@ export const updateTask = catchAsync(
       new: true,
     })
       .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar");
+      .populate("createdBy", "name email avatar")
+      .populate("statusId");
 
     const io = req.app.get("io");
     if (io && updated) {
@@ -371,7 +386,8 @@ export const assignTask = catchAsync(
       { new: true },
     )
       .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar");
+      .populate("createdBy", "name email avatar")
+      .populate("statusId");
 
     const io = req.app.get("io");
     if (io && updated) {
@@ -429,7 +445,8 @@ export const unassignTask = catchAsync(
       { new: true },
     )
       .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar");
+      .populate("createdBy", "name email avatar")
+      .populate("statusId");
 
     const io = req.app.get("io");
     if (io && updated) {
@@ -447,7 +464,7 @@ export const unassignTask = catchAsync(
 export const updateTaskStatus = catchAsync(
   async (req: Request, res: Response): Promise<void> => {
     const { taskId } = req.params;
-    const { status } = req.body;
+    const { statusId } = req.body;
     const user = (req as any).user;
 
     const task = await Task.findById(taskId);
@@ -466,16 +483,17 @@ export const updateTaskStatus = catchAsync(
       );
     }
 
+    // Query the new status document to check isCompleted
+    const newStatus = await Status.findById(statusId);
+    if (!newStatus) throw new NotFoundError("Status");
+
     // Build status update
-    const updateData: any = { status };
+    const updateData: any = { statusId: new Types.ObjectId(statusId) };
 
-    // Auto-set completedAt when moving to COMPLETED
-    if (status === TaskStatus.COMPLETED) {
+    // Auto-set completedAt based on new status isCompleted flag
+    if (newStatus.isCompleted) {
       updateData.completedAt = new Date();
-    }
-
-    // Clear completedAt if moving away from COMPLETED
-    if (status !== TaskStatus.COMPLETED && task.status === TaskStatus.COMPLETED) {
+    } else {
       updateData.completedAt = null;
     }
 
@@ -483,7 +501,8 @@ export const updateTaskStatus = catchAsync(
       new: true,
     })
       .populate("assignees", "name email avatar")
-      .populate("createdBy", "name email avatar");
+      .populate("createdBy", "name email avatar")
+      .populate("statusId");
 
     const io = req.app.get("io");
     if (io && updated) {
@@ -508,8 +527,8 @@ export const updateTaskStatus = catchAsync(
           senderId: user.userId,
           type: NotificationType.TASK_STATUS_CHANGED,
           title: "Task Status Updated",
-          message: `${updaterName} moved task ${updated.title} to ${status}.`,
-          metadata: { taskId: updated._id, channelId: updated.channelId, status },
+          message: `${updaterName} moved task ${updated.title} to ${newStatus.name}.`,
+          metadata: { taskId: updated._id, channelId: updated.channelId, status: newStatus.name },
         });
       }
     }

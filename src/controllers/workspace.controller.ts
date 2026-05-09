@@ -12,6 +12,8 @@ import { sendSuccess } from "../utils/response";
 import { NotificationType } from "../models/notification.model";
 import { createAndSendNotification } from "./notification.controller";
 
+import { seedDefaultStatuses } from "./status.controller";
+
 export const createWorkspaceController = catchAsync(async (req: IAuthenticatedRequest, res: Response) => {
   const { orgId, name } = req.body;
   const userId = req.user.userId;
@@ -30,6 +32,9 @@ export const createWorkspaceController = catchAsync(async (req: IAuthenticatedRe
       role: "owner"
     }],
   });
+
+  // Seed default statuses
+  await seedDefaultStatuses(workspace._id as Types.ObjectId);
 
   await Channel.create({
     name: "general",

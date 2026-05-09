@@ -6,7 +6,6 @@ import Joi from "joi";
 
 const OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i;
 
-const STATUSES = ["TODO", "ONGOING", "COMPLETED"];
 const PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
 /**
@@ -21,6 +20,10 @@ export const createTaskSchema = Joi.object({
 
   description: Joi.string().trim().max(5000).allow("").default("").messages({
     "string.max": "Description cannot exceed 5000 characters",
+  }),
+
+  statusId: Joi.string().pattern(OBJECT_ID_PATTERN).messages({
+    "string.pattern.base": "Status ID must be a valid identifier",
   }),
 
   priority: Joi.string()
@@ -120,11 +123,8 @@ export const unassignTaskSchema = Joi.object({
  * PATCH /tasks/:taskId/status — change task status
  */
 export const updateStatusSchema = Joi.object({
-  status: Joi.string()
-    .valid(...STATUSES)
-    .required()
-    .messages({
-      "any.only": `Status must be one of: ${STATUSES.join(", ")}`,
-      "any.required": "Status is required",
-    }),
+  statusId: Joi.string().pattern(OBJECT_ID_PATTERN).required().messages({
+    "string.pattern.base": "Status ID must be a valid identifier",
+    "any.required": "Status ID is required",
+  }),
 });
