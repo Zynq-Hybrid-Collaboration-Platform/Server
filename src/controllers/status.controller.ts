@@ -6,6 +6,8 @@ import { catchAsync } from "../middleware/async-handler";
 import { sendSuccess } from "../utils/response";
 import { NotFoundError } from "../errors/NotFoundError";
 import { ValidationError } from "../errors/ValidationError";
+import { AuthorizationError } from "../errors/AuthorizationError";
+import WorkspaceModel from "../models/workspace.model";
 
 // ─────────────────────────────────────────────────────────
 // CRUD Statuses
@@ -14,7 +16,17 @@ import { ValidationError } from "../errors/ValidationError";
 export const createStatus = catchAsync(async (req: Request, res: Response) => {
   const { name, workspaceId, isCompleted, order, color } = req.body;
 
-  if (!workspaceId) throw new ValidationError("Workspace ID is required");
+  const workspace = await WorkspaceModel.findById(workspaceId);
+  if (!workspace) throw new NotFoundError("Workspace not found");
+
+  const user = (req as any).user;
+  const membership = user.organizations.find(
+    (o: any) => o.orgId === workspace.orgId.toString()
+  );
+
+  if (!membership || !["admin", "owner"].includes(membership.role)) {
+    throw new AuthorizationError("Only organization admins or owners can manage board columns.");
+  }
 
   const status = await Status.create({
     name,
@@ -43,6 +55,16 @@ export const updateStatus = catchAsync(async (req: Request, res: Response) => {
   const status = await Status.findById(statusId);
   if (!status) throw new NotFoundError("Status not found");
 
+  const workspace = await WorkspaceModel.findById(status.workspaceId);
+  const user = (req as any).user;
+  const membership = user.organizations.find(
+    (o: any) => o.orgId === workspace?.orgId.toString()
+  );
+
+  if (!membership || !["admin", "owner"].includes(membership.role)) {
+    throw new AuthorizationError("Only organization admins or owners can manage board columns.");
+  }
+
   const updates: any = {};
   if (name !== undefined) updates.name = name;
   if (isCompleted !== undefined) updates.isCompleted = isCompleted;
@@ -59,6 +81,16 @@ export const deleteStatus = catchAsync(async (req: Request, res: Response) => {
 
   const status = await Status.findById(statusId);
   if (!status) throw new NotFoundError("Status not found");
+
+  const workspace = await WorkspaceModel.findById(status.workspaceId);
+  const user = (req as any).user;
+  const membership = user.organizations.find(
+    (o: any) => o.orgId === workspace?.orgId.toString()
+  );
+
+  if (!membership || !["admin", "owner"].includes(membership.role)) {
+    throw new AuthorizationError("Only organization admins or owners can manage board columns.");
+  }
 
   // Check if there are tasks in this status
   const taskCount = await Task.countDocuments({ statusId: status._id });
