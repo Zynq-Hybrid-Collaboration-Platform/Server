@@ -74,13 +74,13 @@ export const createTask = catchAsync(
     const channel = await Channel.findById(channelId);
     if (!channel) throw new NotFoundError("Channel");
 
-    // 2. Verify the user is an admin or owner of the org that owns the workspace
+    // 2. Verify the user is a valid member of the workspace
     const { workspace, membership } = await resolveOrgRole(
       user,
       channel.workspaceId,
     );
-    if (!membership || !["admin", "owner"].includes(membership.role)) {
-      throw new AuthorizationError("Only organization admins or owners can create tasks");
+    if (!membership) {
+      throw new AuthorizationError("Only workspace members can create tasks");
     }
 
     // 3. Validate assignees are workspace members
@@ -284,10 +284,10 @@ export const updateTask = catchAsync(
     const task = await Task.findById(taskId);
     if (!task) throw new NotFoundError("Task");
 
-    // Verify admin or owner role
+    // Verify workspace membership
     const { membership } = await resolveOrgRole(user, task.workspaceId);
-    if (!membership || !["admin", "owner"].includes(membership.role)) {
-      throw new AuthorizationError("Only organization admins or owners can update tasks");
+    if (!membership) {
+      throw new AuthorizationError("Only workspace members can update tasks");
     }
 
     const { title, description, priority, dueDate } = req.body;
@@ -359,11 +359,11 @@ export const assignTask = catchAsync(
     const task = await Task.findById(taskId);
     if (!task) throw new NotFoundError("Task");
 
-    // Verify admin or owner role
+    // Verify workspace membership
     const { membership } = await resolveOrgRole(user, task.workspaceId);
-    if (!membership || !["admin", "owner"].includes(membership.role)) {
+    if (!membership) {
       throw new AuthorizationError(
-        "Only organization admins or owners can assign tasks",
+        "Only workspace members can assign tasks",
       );
     }
 
@@ -425,11 +425,11 @@ export const unassignTask = catchAsync(
     const task = await Task.findById(taskId);
     if (!task) throw new NotFoundError("Task");
 
-    // Verify admin or owner role
+    // Verify workspace membership
     const { membership } = await resolveOrgRole(user, task.workspaceId);
-    if (!membership || !["admin", "owner"].includes(membership.role)) {
+    if (!membership) {
       throw new AuthorizationError(
-        "Only organization admins or owners can unassign tasks",
+        "Only workspace members can unassign tasks",
       );
     }
 
