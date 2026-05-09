@@ -1,14 +1,8 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 // ─────────────────────────────────────────────────────────
-// Task Status & Priority Enums
+// Task Priority Enum
 // ─────────────────────────────────────────────────────────
-
-export enum TaskStatus {
-  TODO = "TODO",
-  ONGOING = "ONGOING",
-  COMPLETED = "COMPLETED",
-}
 
 export enum TaskPriority {
   LOW = "LOW",
@@ -24,7 +18,7 @@ export enum TaskPriority {
 export interface ITask extends Document {
   title: string;
   description: string;
-  status: TaskStatus;
+  statusId: mongoose.Types.ObjectId;
   priority: TaskPriority;
   channelId: mongoose.Types.ObjectId;
   workspaceId: mongoose.Types.ObjectId;
@@ -57,10 +51,10 @@ const taskSchema = new Schema<ITask>(
       maxlength: 5000,
     },
 
-    status: {
-      type: String,
-      enum: Object.values(TaskStatus),
-      default: TaskStatus.TODO,
+    statusId: {
+      type: Schema.Types.ObjectId,
+      ref: "Status",
+      required: true,
     },
 
     priority: {
@@ -118,7 +112,7 @@ const taskSchema = new Schema<ITask>(
 // ─────────────────────────────────────────────────────────
 
 /** Fast lookup: all tasks in a channel, filterable by status */
-taskSchema.index({ channelId: 1, status: 1 });
+taskSchema.index({ channelId: 1, statusId: 1 });
 
 /** All tasks in a workspace */
 taskSchema.index({ workspaceId: 1 });

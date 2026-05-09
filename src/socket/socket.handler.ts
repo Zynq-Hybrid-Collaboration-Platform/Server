@@ -142,7 +142,7 @@ export const setupSocketHandlers = (io: Server) => {
                                 senderId: user.userId,
                                 type: NotificationType.MENTION,
                                 title: "New Mention",
-                                message: `${populatedMessage?.senderId?.name || "Someone"} mentioned you in a message`,
+                                message: `${(populatedMessage?.senderId as any)?.name || "Someone"} mentioned you in a message`,
                                 metadata: { channelId, messageId: message._id },
                             });
                         }
