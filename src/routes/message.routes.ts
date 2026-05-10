@@ -20,4 +20,7 @@ router.delete("/:messageId", authenticate, messageController.deleteMessage);
 // Upload media to Cloudinary
 router.post("/upload", authenticate, upload.single("file"), messageController.uploadMedia);
 
+// Send a voice message
+router.post("/voice", authenticate, upload.single("file"), messageController.sendVoiceMessage);
+
 export { router as messageRoutes };

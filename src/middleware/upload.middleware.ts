@@ -20,6 +20,12 @@ export const upload = multer({
       "application/zip",
       "video/mp4",
       "audio/mpeg",
+      "audio/webm",
+      "audio/ogg",
+      "audio/wav",
+      "audio/x-wav",
+      "audio/mp4",
+      "audio/aac",
     ];
     if (allowed.includes(file.mimetype)) {
       cb(null, true);
