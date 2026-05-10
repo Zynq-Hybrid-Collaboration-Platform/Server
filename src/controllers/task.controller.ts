@@ -12,24 +12,12 @@ import { ValidationError } from "../errors/ValidationError";
 import { NotificationType } from "../models/notification.model";
 import { createAndSendNotification } from "./notification.controller";
 import { UserModel as User } from "../models/auth.model";
+import { resolveOrgRole } from "../utils/auth-utils";
 
 // ─────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────
 
-/**
- * Resolve the user's org role for a given workspace.
- * Returns { workspace, membership } or throws.
- */
-async function resolveOrgRole(user: any, workspaceId: string | Types.ObjectId) {
-  const workspace = await WorkspaceModel.findById(workspaceId);
-  if (!workspace) throw new NotFoundError("Workspace");
-
-  const membership = user.organizations.find(
-    (o: any) => o.orgId === workspace.orgId.toString(),
-  );
-  return { workspace, membership };
-}
 
 /**
  * Verify that user IDs are members of the given channel's workspace.
@@ -61,7 +49,7 @@ async function validateChannelAssignees(
 }
 
 // ─────────────────────────────────────────────────────────
-// CREATE TASK (Admin only)
+// CREATE TASK (Workspace Members)
 // ─────────────────────────────────────────────────────────
 
 export const createTask = catchAsync(
@@ -273,7 +261,7 @@ export const getTaskById = catchAsync(
 );
 
 // ─────────────────────────────────────────────────────────
-// UPDATE TASK 
+// UPDATE TASK (Workspace Members)
 // ─────────────────────────────────────────────────────────
 
 export const updateTask = catchAsync(
@@ -290,13 +278,20 @@ export const updateTask = catchAsync(
       throw new AuthorizationError("Only workspace members can update tasks");
     }
 
-    const { title, description, priority, dueDate } = req.body;
+    const { title, description, priority, dueDate, assignees } = req.body;
 
     const updateData: any = {};
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
     if (priority !== undefined) updateData.priority = priority;
     if (dueDate !== undefined) updateData.dueDate = dueDate;
+    
+    if (assignees !== undefined) {
+      const channel = await Channel.findById(task.channelId);
+      if (!channel) throw new NotFoundError("Channel");
+      await validateChannelAssignees(channel, assignees);
+      updateData.assignees = assignees.map((id: string) => new Types.ObjectId(id));
+    }
 
     const updated = await Task.findByIdAndUpdate(taskId, updateData, {
       new: true,
@@ -470,16 +465,11 @@ export const updateTaskStatus = catchAsync(
     const task = await Task.findById(taskId);
     if (!task) throw new NotFoundError("Task");
 
-    // Check if user is admin/owner OR an assignee
     const { membership } = await resolveOrgRole(user, task.workspaceId);
-    const isAdmin = membership && ["admin", "owner"].includes(membership.role);
-    const isAssignee = task.assignees.some(
-      (a: Types.ObjectId) => a.toString() === user.userId,
-    );
 
-    if (!isAdmin && !isAssignee) {
+    if (!membership) {
       throw new AuthorizationError(
-        "Only admins, owners or assigned users can change task status",
+        "Only workspace members can change task status",
       );
     }
 
