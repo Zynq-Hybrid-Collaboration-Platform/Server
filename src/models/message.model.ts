@@ -6,6 +6,7 @@ export enum MessageType {
     FILE = "FILE",
     STICKER = "STICKER",
     GIF = "GIF",
+    VOICE = "VOICE",
 }
 
 export interface IMessage extends Document {
