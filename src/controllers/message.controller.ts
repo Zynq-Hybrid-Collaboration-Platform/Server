@@ -125,3 +125,52 @@ export const uploadMedia = catchAsync(async (req: Request, res: Response) => {
         },
     }, 201);
 });
+
+// Send a voice message (upload + message creation)
+export const sendVoiceMessage = catchAsync(async (req: Request, res: Response) => {
+    const { channelId, replyTo } = req.body;
+    const user = (req as any).user;
+
+    if (!req.file) {
+        return sendSuccess(res, { error: "No voice file provided" }, 400);
+    }
+
+    // 1. Upload to Cloudinary
+    const { url, publicId, fileType } = await uploadToCloudinary(
+        req.file.buffer,
+        "synq-voice-messages"
+    );
+
+    // 2. Create the message
+    const message = await Message.create({
+        senderId: user.userId,
+        channelId: new Types.ObjectId(channelId),
+        content: "",
+        type: "VOICE",
+        attachments: [{
+            url,
+            name: req.file.originalname || "voice-message.webm",
+            fileType: req.file.mimetype,
+            // publicId, // The model doesn't seem to have publicId in attachments based on message.model.ts, but uploadMedia includes it in the response. Let's check the model again.
+        }],
+        replyTo: replyTo ? new Types.ObjectId(replyTo) : null,
+    });
+
+    // 3. Populate
+    const populatedMessage = await Message.findById(message._id)
+        .populate("senderId", "name avatar")
+        .populate({
+            path: "replyTo",
+            populate: { path: "senderId", select: "name avatar" }
+        })
+        .populate("reactions.users", "name avatar")
+        .populate("pinnedBy", "name avatar");
+
+    // 4. Emit via socket
+    const io = req.app.get("io");
+    if (io) {
+        io.to(channelId).emit("new-message", populatedMessage);
+    }
+
+    sendSuccess(res, { message: populatedMessage }, 201);
+});

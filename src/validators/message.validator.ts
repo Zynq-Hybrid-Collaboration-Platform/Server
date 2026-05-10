@@ -9,7 +9,7 @@ export const sendMessageSchema = Joi.object({
     then: Joi.string().required().min(1),
     otherwise: Joi.string().optional(),
   }),
-  type: Joi.string().valid("TEXT", "IMAGE", "FILE", "STICKER", "GIF").default("TEXT"),
+  type: Joi.string().valid("TEXT", "IMAGE", "FILE", "STICKER", "GIF", "VOICE").default("TEXT"),
   attachments: Joi.array().items(
     Joi.object({
       url: Joi.string().uri().required(),
