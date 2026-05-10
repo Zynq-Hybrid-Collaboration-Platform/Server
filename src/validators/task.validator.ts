@@ -77,6 +77,16 @@ export const updateTaskSchema = Joi.object({
   dueDate: Joi.date().iso().allow(null).messages({
     "date.format": "Due date must be a valid ISO date",
   }),
+  
+  assignees: Joi.array()
+    .items(
+      Joi.string().pattern(OBJECT_ID_PATTERN).messages({
+        "string.pattern.base": "Each assignee must be a valid user ID",
+      }),
+    )
+    .messages({
+      "array.base": "Assignees must be an array of user IDs",
+    }),
 })
   .min(1)
   .messages({

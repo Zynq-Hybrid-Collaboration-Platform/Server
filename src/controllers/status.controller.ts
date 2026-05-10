@@ -8,6 +8,7 @@ import { NotFoundError } from "../errors/NotFoundError";
 import { ValidationError } from "../errors/ValidationError";
 import { AuthorizationError } from "../errors/AuthorizationError";
 import WorkspaceModel from "../models/workspace.model";
+import { resolveOrgRole } from "../utils/auth-utils";
 
 // ─────────────────────────────────────────────────────────
 // CRUD Statuses
@@ -16,16 +17,11 @@ import WorkspaceModel from "../models/workspace.model";
 export const createStatus = catchAsync(async (req: Request, res: Response) => {
   const { name, workspaceId, isCompleted, order, color } = req.body;
 
-  const workspace = await WorkspaceModel.findById(workspaceId);
-  if (!workspace) throw new NotFoundError("Workspace not found");
-
   const user = (req as any).user;
-  const membership = user.organizations.find(
-    (o: any) => o.orgId === workspace.orgId.toString()
-  );
+  const { membership } = await resolveOrgRole(user, workspaceId);
 
-  if (!membership || !["admin", "owner"].includes(membership.role)) {
-    throw new AuthorizationError("Only organization admins or owners can manage board columns.");
+  if (!membership) {
+    throw new AuthorizationError("You must be a member of this workspace to manage columns");
   }
 
   const status = await Status.create({
@@ -55,14 +51,11 @@ export const updateStatus = catchAsync(async (req: Request, res: Response) => {
   const status = await Status.findById(statusId);
   if (!status) throw new NotFoundError("Status not found");
 
-  const workspace = await WorkspaceModel.findById(status.workspaceId);
   const user = (req as any).user;
-  const membership = user.organizations.find(
-    (o: any) => o.orgId === workspace?.orgId.toString()
-  );
+  const { membership } = await resolveOrgRole(user, status.workspaceId);
 
-  if (!membership || !["admin", "owner"].includes(membership.role)) {
-    throw new AuthorizationError("Only organization admins or owners can manage board columns.");
+  if (!membership) {
+    throw new AuthorizationError("You must be a member of this workspace to manage columns");
   }
 
   const updates: any = {};
@@ -82,14 +75,11 @@ export const deleteStatus = catchAsync(async (req: Request, res: Response) => {
   const status = await Status.findById(statusId);
   if (!status) throw new NotFoundError("Status not found");
 
-  const workspace = await WorkspaceModel.findById(status.workspaceId);
   const user = (req as any).user;
-  const membership = user.organizations.find(
-    (o: any) => o.orgId === workspace?.orgId.toString()
-  );
+  const { membership } = await resolveOrgRole(user, status.workspaceId);
 
-  if (!membership || !["admin", "owner"].includes(membership.role)) {
-    throw new AuthorizationError("Only organization admins or owners can manage board columns.");
+  if (!membership) {
+    throw new AuthorizationError("You must be a member of this workspace to manage columns");
   }
 
   // Check if there are tasks in this status
@@ -116,12 +106,12 @@ export const seedDefaultStatuses = async (workspaceId: Types.ObjectId) => {
 
   const statuses = await Promise.all(
     defaults.map((d) =>
-      Status.create({
-        ...d,
-        workspaceId,
-      })
-    )
-  );
+    Status.create({
+      ...d,
+      workspaceId,
+    })
+  )
+);
 
-  return statuses;
+return statuses;
 };
