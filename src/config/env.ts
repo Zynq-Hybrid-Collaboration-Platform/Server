@@ -44,6 +44,7 @@ export const config = {
   // ── General ──────────────────────────────────────────
   NODE_ENV: optionalEnv("NODE_ENV", "development"),
   PORT: parseInt(optionalEnv("PORT", "3000"), 10),
+  BACKEND_URL: optionalEnv("BACKEND_URL", "http://localhost:5000"),
 
   // ── Database ─────────────────────────────────────────
   MONGO_URI: requireEnv("MONGO_URI"),
