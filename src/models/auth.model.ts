@@ -117,6 +117,19 @@ const userSchema = new Schema<IUserDocument>(
       unique: true,
       sparse: true,
     },
+    bio: {
+      type: String,
+      default: "",
+      maxlength: 300,
+    },
+    timezone: {
+      type: String,
+      default: "UTC",
+    },
+    notificationPreferences: {
+      email: { type: Boolean, default: true },
+      inApp: { type: Boolean, default: true },
+    },
   },
   {
     timestamps: true,

@@ -5,7 +5,8 @@ import { Organization } from "../models/organization.model";
 import { catchAsync } from "../middleware/async-handler";
 import { sendSuccess } from "../utils/response";
 import { IAuthenticatedRequest } from "../types/request.types";
-import { NotFoundError } from "../errors";
+import { NotFoundError, BadRequestError } from "../errors";
+import bcrypt from "bcryptjs";
 
 // ─────────────────────────────────────────────────────
 // GET /api/v1/users/profile
@@ -28,6 +29,9 @@ export const getProfile = catchAsync(async (req: Request, res: Response): Promis
         username: user.username,
         avatar: user.avatar,
         status: user.status,
+        bio: user.bio || "",
+        timezone: user.timezone || "UTC",
+        notificationPreferences: user.notificationPreferences || { email: true, inApp: true },
         organizations: (user.organizations || []).map((o: any) => ({
           orgId: o.orgId.toString(),
           role: o.role,
@@ -75,4 +79,166 @@ export const getProfile = catchAsync(async (req: Request, res: Response): Promis
   }
 
   throw new NotFoundError("User not found");
+});
+
+// ─────────────────────────────────────────────────────
+// PATCH /api/v1/users/profile
+// Update own profile
+// ─────────────────────────────────────────────────────
+
+export const updateProfile = catchAsync(async (req: Request, res: Response) => {
+  const authReq = req as IAuthenticatedRequest;
+  const userId = authReq.user.userId;
+  const { name, username, bio, timezone, avatar } = req.body;
+
+  const user = await UserModel.findById(userId);
+  if (!user) throw new NotFoundError("User not found");
+
+  if (username && username !== user.username) {
+    const existingUser = await UserModel.findOne({ username });
+    if (existingUser) throw new BadRequestError("Username already taken");
+  }
+
+  if (name) user.name = name;
+  if (username) user.username = username;
+  if (bio !== undefined) user.bio = bio;
+  if (timezone) user.timezone = timezone;
+  if (avatar !== undefined) user.avatar = avatar;
+
+  await user.save();
+
+  // Socket broadcast (Task 9)
+  const io = req.app.get("io");
+  if (io) {
+    const workspaceIds = user.workspaces?.map(w => w.workspaceId.toString()) || [];
+    const profilePayload = {
+      userId,
+      name: user.name,
+      avatar: user.avatar,
+      bio: user.bio,
+      username: user.username,
+    };
+
+    for (const wsId of workspaceIds) {
+      io.to(`workspace_${wsId}`).emit("user:profile-updated", profilePayload);
+    }
+  }
+
+  sendSuccess(res, { user });
+});
+
+// ─────────────────────────────────────────────────────
+// PATCH /api/v1/users/password
+// Change password
+// ─────────────────────────────────────────────────────
+
+export const changePassword = catchAsync(async (req: Request, res: Response) => {
+  const authReq = req as IAuthenticatedRequest;
+  const userId = authReq.user.userId;
+  const { currentPassword, newPassword } = req.body;
+
+  const user = await UserModel.findById(userId).select("+password");
+  if (!user) throw new NotFoundError("User not found");
+
+  if (user.googleId && !user.password) {
+    throw new BadRequestError("Password change not available for Google accounts");
+  }
+
+  const isMatch = await bcrypt.compare(currentPassword, user.password!);
+  if (!isMatch) throw new BadRequestError("Incorrect current password");
+
+  user.password = await bcrypt.hash(newPassword, 12);
+  user.refreshToken = undefined; // Invalidate refresh tokens
+
+  await user.save();
+
+  sendSuccess(res, { message: "Password updated successfully" });
+});
+
+// ─────────────────────────────────────────────────────
+// PATCH /api/v1/users/notifications
+// Update notification preferences
+// ─────────────────────────────────────────────────────
+
+export const updateNotifications = catchAsync(async (req: Request, res: Response) => {
+  const authReq = req as IAuthenticatedRequest;
+  const userId = authReq.user.userId;
+  const { email, inApp } = req.body;
+
+  const user = await UserModel.findById(userId);
+  if (!user) throw new NotFoundError("User not found");
+
+  if (email !== undefined) user.notificationPreferences.email = email;
+  if (inApp !== undefined) user.notificationPreferences.inApp = inApp;
+
+  await user.save();
+
+  sendSuccess(res, { notificationPreferences: user.notificationPreferences });
+});
+
+// ─────────────────────────────────────────────────────
+// GET /api/v1/users/:userId
+// Get public profile of any user
+// ─────────────────────────────────────────────────────
+
+export const getPublicProfile = catchAsync(async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  const user = await UserModel.findById(userId).select("name username avatar bio status");
+  if (!user) throw new NotFoundError("User not found");
+
+  sendSuccess(res, { user });
+});
+
+// ─────────────────────────────────────────────────────
+// DELETE /api/v1/users/account
+// Delete own account
+// ─────────────────────────────────────────────────────
+
+export const deleteAccount = catchAsync(async (req: Request, res: Response) => {
+  const authReq = req as IAuthenticatedRequest;
+  const userId = authReq.user.userId;
+
+  const user = await UserModel.findById(userId);
+  if (!user) throw new NotFoundError("User not found");
+
+  // Check if owner of any workspace
+  const ownedWorkspaces = await Workspace.find({
+    members: { $elemMatch: { userId, role: "owner" } }
+  });
+
+  if (ownedWorkspaces.length > 0) {
+    throw new BadRequestError("Transfer ownership before deleting account");
+  }
+
+  const workspaceIds = user.workspaces?.map(w => w.workspaceId.toString()) || [];
+
+  // Delete user document
+  await UserModel.findByIdAndDelete(userId);
+
+  // Remove from all workspaces
+  await Workspace.updateMany(
+    { "members.userId": userId },
+    { $pull: { members: { userId } } }
+  );
+
+  // Remove from all organizations
+  await Organization.updateMany(
+    { members: userId },
+    { $pull: { members: userId } }
+  );
+
+  // Socket broadcast (Task 8)
+  const io = req.app.get("io");
+  if (io) {
+    for (const wsId of workspaceIds) {
+      io.to(`workspace_${wsId}`).emit("member:removed", { userId, workspaceId: wsId });
+    }
+  }
+
+  // Clear cookies
+  res.clearCookie("accessToken");
+  res.clearCookie("refreshToken");
+
+  sendSuccess(res, { message: "Account deleted successfully" });
 });

@@ -62,9 +62,24 @@ export const setupSocketHandlers = (io: Server) => {
         }
     });
 
-    io.on("connection", (socket: Socket) => {
+    io.on("connection", async (socket: Socket) => {
         const user = (socket as any).user as SocketUser;
         logger.info(`User connected: ${user.userId} (Socket ID: ${socket.id})`);
+
+        // Update status to online in DB
+        await UserModel.findByIdAndUpdate(user.userId, { status: "online" });
+
+        // Fetch all workspaces this user belongs to
+        const userData = await UserModel.findById(user.userId).select("workspaces");
+        const workspaceIds = userData?.workspaces?.map(w => w.workspaceId.toString()) || [];
+
+        // Broadcast online status to all their workspace rooms
+        for (const wsId of workspaceIds) {
+            socket.to(`workspace_${wsId}`).emit("user:status-changed", {
+                userId: user.userId,
+                status: "online",
+            });
+        }
 
         // Join personal room for notifications
         socket.join(`user_${user.userId}`);
@@ -316,8 +331,19 @@ export const setupSocketHandlers = (io: Server) => {
         });
 
 
-        socket.on("disconnect", () => {
-            console.log(`User disconnected: ${user.userId}`);
+        socket.on("disconnect", async () => {
+            logger.info(`User disconnected: ${user.userId}`);
+
+            // Update status to offline in DB
+            await UserModel.findByIdAndUpdate(user.userId, { status: "offline" });
+
+            // Broadcast offline status to all their workspace rooms
+            for (const wsId of workspaceIds) {
+                socket.to(`workspace_${wsId}`).emit("user:status-changed", {
+                    userId: user.userId,
+                    status: "offline",
+                });
+            }
         });
     });
 };
