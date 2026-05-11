@@ -38,18 +38,29 @@ async function bootstrap(): Promise<void> {
   // 3. Create HTTP server and initialize Socket.io
   const httpServer = http.createServer(app);
   const io = new Server(httpServer, {
-    transports: ["websocket"], // Enforce WebSocket only
     cors: {
       origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-        if (!origin || config.FRONTEND_URLS.indexOf(origin) !== -1 || config.isDevelopment()) {
+        if (!origin || config.isDevelopment()) {
+          return callback(null, true);
+        }
+
+        const normalizedOrigin = origin.replace(/\/$/, "");
+        const isAllowed = config.FRONTEND_URLS.some(url => url.replace(/\/$/, "") === normalizedOrigin);
+
+        if (isAllowed) {
           callback(null, true);
         } else {
+          logger.warn(`CORS blocked for origin: ${origin}`);
           callback(new Error("Not allowed by CORS"));
         }
       },
       methods: ["GET", "POST"],
       credentials: true,
     },
+    // Allow both polling and websocket for better production compatibility
+    transports: ["polling", "websocket"],
+    pingTimeout: 60000,
+    pingInterval: 25000,
   });
 
   io.adapter(createAdapter(pubClient, subClient));

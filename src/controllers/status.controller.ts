@@ -34,7 +34,7 @@ export const createStatus = catchAsync(async (req: Request, res: Response) => {
 
   const io = req.app.get("io");
   if (io) {
-    io.emit("status:created", { status });
+    io.to(`workspace_${workspaceId}`).emit("status:created", { status });
   }
 
   sendSuccess(res, { status }, 201);
@@ -73,7 +73,7 @@ export const updateStatus = catchAsync(async (req: Request, res: Response) => {
 
   const io = req.app.get("io");
   if (io && updated) {
-    io.emit("status:updated", { status: updated });
+    io.to(`workspace_${status.workspaceId.toString()}`).emit("status:updated", { status: updated });
   }
 
   sendSuccess(res, { status: updated });
@@ -102,7 +102,7 @@ export const deleteStatus = catchAsync(async (req: Request, res: Response) => {
 
   const io = req.app.get("io");
   if (io) {
-    io.emit("status:deleted", { 
+    io.to(`workspace_${status.workspaceId.toString()}`).emit("status:deleted", { 
       statusId, 
       workspaceId: status.workspaceId.toString() 
     });

@@ -63,21 +63,37 @@ export const setupSocketHandlers = (io: Server) => {
 
     io.on("connection", (socket: Socket) => {
         const user = (socket as any).user as SocketUser;
-        console.log(`User connected: ${user.userId} (Socket ID: ${socket.id})`);
+        logger.info(`User connected: ${user.userId} (Socket ID: ${socket.id})`);
 
         // Join personal room for notifications
         socket.join(`user_${user.userId}`);
 
+        // Join a workspace room (for Kanban boards and workspace-wide updates)
+        socket.on("join-workspace", (workspaceId: string) => {
+            if (!workspaceId) return;
+            socket.join(`workspace_${workspaceId}`);
+            logger.info(`User ${user.userId} joined workspace room: workspace_${workspaceId}`);
+        });
+
+        // Leave a workspace room
+        socket.on("leave-workspace", (workspaceId: string) => {
+            if (!workspaceId) return;
+            socket.leave(`workspace_${workspaceId}`);
+            logger.info(`User ${user.userId} left workspace room: workspace_${workspaceId}`);
+        });
+
         // Join a channel room
         socket.on("join-channel", (channelId: string) => {
+            if (!channelId) return;
             socket.join(channelId);
-            console.log(`User ${user.userId} joined channel: ${channelId}`);
+            logger.info(`User ${user.userId} joined channel: ${channelId}`);
         });
 
         // Leave a channel room
         socket.on("leave-channel", (channelId: string) => {
+            if (!channelId) return;
             socket.leave(channelId);
-            console.log(`User ${user.userId} left channel: ${channelId}`);
+            logger.info(`User ${user.userId} left channel: ${channelId}`);
         });
 
         // Chat Message
