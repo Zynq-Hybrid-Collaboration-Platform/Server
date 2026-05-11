@@ -42,10 +42,17 @@ router.get(
   workspaceController.getWorkspaceMembersController
 );
 
+router.get(
+  "/:workspaceId/members/:userId/role",
+  authenticate,
+  authorizeWorkspace([]), // Any member can view a role
+  workspaceController.getMemberRoleController
+);
+
 router.patch(
   "/:workspaceId/members/:userId/role",
   authenticate,
-  authorizeWorkspace(["owner"]), // Only owner can change roles
+  authorizeWorkspace(["admin", "owner"]), // Both admin and owner can change roles (controller handles logic)
   validate(updateMemberRoleSchema),
   workspaceController.updateMemberRoleController
 );
