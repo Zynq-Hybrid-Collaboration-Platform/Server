@@ -56,6 +56,11 @@ export const createMessage = catchAsync(async (req: Request, res: Response) => {
         .populate("reactions.users", "name avatar")
         .populate("pinnedBy", "name avatar");
 
+    const io = req.app.get("io");
+    if (io) {
+        io.to(channelId).emit("new-message", populatedMessage);
+    }
+
     sendSuccess(res, { message: populatedMessage }, 201);
 });
 
@@ -85,6 +90,11 @@ export const updateMessage = catchAsync(async (req: Request, res: Response) => {
         .populate("reactions.users", "name avatar")
         .populate("pinnedBy", "name avatar");
 
+    const io = req.app.get("io");
+    if (io && populatedMessage) {
+        io.to(message.channelId.toString()).emit("message-updated", populatedMessage);
+    }
+
     sendSuccess(res, { message: populatedMessage });
 });
 
@@ -101,6 +111,14 @@ export const deleteMessage = catchAsync(async (req: Request, res: Response) => {
     }
 
     await Message.findByIdAndDelete(messageId);
+
+    const io = req.app.get("io");
+    if (io) {
+        io.to(message.channelId.toString()).emit("message-deleted", { 
+            messageId, 
+            channelId: message.channelId 
+        });
+    }
 
     sendSuccess(res, { messageId });
 });
