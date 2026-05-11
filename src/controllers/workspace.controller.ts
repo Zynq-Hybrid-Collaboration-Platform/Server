@@ -215,6 +215,22 @@ export const removeMemberController = catchAsync(async (req: IAuthenticatedReque
   sendSuccess(res, { message: "Member removed from workspace and all channels" });
 });
 
+export const getMemberRoleController = catchAsync(async (req: Request, res: Response) => {
+  const { workspaceId, userId } = req.params;
+
+  const workspace = await Workspace.findById(workspaceId);
+  if (!workspace) throw new NotFoundError("Workspace not found");
+
+  const member = workspace.members.find(m => m.userId.toString() === userId);
+  if (!member) throw new NotFoundError("User is not a member of this workspace");
+
+  sendSuccess(res, {
+    role: member.role,
+    userId,
+    workspaceId,
+  });
+});
+
 export const updateMemberRoleController = catchAsync(async (req: IAuthenticatedRequest, res: Response) => {
   const { workspaceId, userId } = req.params;
   const { role } = req.body;
@@ -223,26 +239,47 @@ export const updateMemberRoleController = catchAsync(async (req: IAuthenticatedR
     throw new ValidationError("You cannot change your own role");
   }
 
+  if (!["admin", "member"].includes(role)) {
+    throw new ValidationError("Only 'admin' and 'member' roles are valid target roles");
+  }
+
   const workspace = await Workspace.findById(workspaceId);
   if (!workspace) throw new NotFoundError("Workspace not found");
 
-  // Only Owner can change roles
   const requester = workspace.members.find(m => m.userId.toString() === req.user.userId);
-  if (!requester || requester.role !== "owner") {
-    throw new ForbiddenError("Only workspace owners can change member roles");
+  if (!requester || (requester.role !== "owner" && requester.role !== "admin")) {
+    throw new ForbiddenError("Only workspace owners and admins can change member roles");
   }
 
-  const hasMember = workspace.members.some(m => m.userId.toString() === userId);
-  if (!hasMember) throw new NotFoundError("Member not found in workspace");
+  const targetMember = workspace.members.find(m => m.userId.toString() === userId);
+  if (!targetMember) throw new NotFoundError("Member not found in workspace");
 
-  // Update all entries for this user (handles legacy duplicates)
-  workspace.members.forEach(m => {
-    if (m.userId.toString() === userId) {
-      m.role = role;
+  // Logic: Owner can change anyone. Admin can only promote member to admin.
+  if (requester.role === "admin") {
+    if (targetMember.role === "admin") {
+      throw new ForbiddenError("Admins cannot demote other admins");
     }
-  });
+    if (targetMember.role === "owner") {
+      throw new ForbiddenError("Admins cannot change owner roles");
+    }
+    if (role !== "admin") {
+      throw new ForbiddenError("Admins can only promote members to admin");
+    }
+  }
 
+  // Update role
+  targetMember.role = role as "admin" | "member";
   await workspace.save();
+
+  // Socket event (Task 7)
+  const io = req.app.get("io");
+  if (io) {
+    io.to(`workspace_${workspaceId}`).emit("member:role-updated", { 
+      userId, 
+      role, 
+      workspaceId 
+    });
+  }
 
   // Notify the user about their role update
   await createAndSendNotification(req, {

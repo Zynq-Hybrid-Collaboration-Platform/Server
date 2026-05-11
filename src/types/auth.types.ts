@@ -28,6 +28,12 @@ export interface IUserDocument extends Document {
   refreshToken: string;
   resetPasswordToken: string;
   resetPasswordExpires: Date;
+  bio: string;
+  timezone: string;
+  notificationPreferences: {
+    email: boolean;
+    inApp: boolean;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -51,6 +57,9 @@ export type IUserLean = Pick<
   | "refreshToken"
   | "resetPasswordToken"
   | "resetPasswordExpires"
+  | "bio"
+  | "timezone"
+  | "notificationPreferences"
   | "createdAt"
   | "updatedAt"
 >;
