@@ -105,6 +105,7 @@ export const createTask = catchAsync(
     const io = req.app.get("io");
     if (io) {
       io.to(channelId.toString()).emit("task:created", { task: populated });
+      io.to(`workspace_${channel.workspaceId.toString()}`).emit("task:created", { task: populated });
     }
 
     // Send notifications to assignees
@@ -303,6 +304,7 @@ export const updateTask = catchAsync(
     const io = req.app.get("io");
     if (io && updated) {
       io.to(updated.channelId.toString()).emit("task:updated", { task: updated });
+      io.to(`workspace_${updated.workspaceId.toString()}`).emit("task:updated", { task: updated });
     }
 
     sendSuccess(res, { task: updated });
@@ -334,6 +336,10 @@ export const deleteTask = catchAsync(
       io.to(task.channelId.toString()).emit("task:deleted", { 
         taskId: task._id.toString(),
         channelId: task.channelId.toString() 
+      });
+      io.to(`workspace_${task.workspaceId.toString()}`).emit("task:deleted", { 
+        taskId: task._id.toString(),
+        workspaceId: task.workspaceId.toString()
       });
     }
 
@@ -387,6 +393,7 @@ export const assignTask = catchAsync(
     const io = req.app.get("io");
     if (io && updated) {
       io.to(updated.channelId.toString()).emit("task:updated", { task: updated });
+      io.to(`workspace_${updated.workspaceId.toString()}`).emit("task:updated", { task: updated });
 
       // Notify only the newly assigned users
       for (const assigneeId of assignees) {
@@ -446,6 +453,7 @@ export const unassignTask = catchAsync(
     const io = req.app.get("io");
     if (io && updated) {
       io.to(updated.channelId.toString()).emit("task:updated", { task: updated });
+      io.to(`workspace_${updated.workspaceId.toString()}`).emit("task:updated", { task: updated });
     }
 
     sendSuccess(res, { task: updated });
@@ -497,6 +505,7 @@ export const updateTaskStatus = catchAsync(
     const io = req.app.get("io");
     if (io && updated) {
       io.to(updated.channelId.toString()).emit("task:updated", { task: updated });
+      io.to(`workspace_${updated.workspaceId.toString()}`).emit("task:updated", { task: updated });
 
       // Notify assignees and creator
       const updater = await User.findById(user.userId);
