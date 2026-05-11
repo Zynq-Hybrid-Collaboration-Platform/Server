@@ -1,6 +1,7 @@
 import { Server, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { config } from "../config/env";
+import { logger } from "../logger/logger";
 import { Message } from "../models/message.model";
 import { Channel } from "../models/channel.model";
 import Workspace from "../models/workspace.model";
