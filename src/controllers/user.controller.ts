@@ -5,8 +5,8 @@ import { Organization } from "../models/organization.model";
 import { catchAsync } from "../middleware/async-handler";
 import { sendSuccess } from "../utils/response";
 import { IAuthenticatedRequest } from "../types/request.types";
-import { NotFoundError, BadRequestError } from "../errors";
-import bcrypt from "bcryptjs";
+import { NotFoundError, ValidationError } from "../errors";
+import bcrypt from "bcrypt";
 
 // ─────────────────────────────────────────────────────
 // GET /api/v1/users/profile
@@ -96,7 +96,7 @@ export const updateProfile = catchAsync(async (req: Request, res: Response) => {
 
   if (username && username !== user.username) {
     const existingUser = await UserModel.findOne({ username });
-    if (existingUser) throw new BadRequestError("Username already taken");
+    if (existingUser) throw new ValidationError("Username already taken");
   }
 
   if (name) user.name = name;
@@ -141,14 +141,14 @@ export const changePassword = catchAsync(async (req: Request, res: Response) => 
   if (!user) throw new NotFoundError("User not found");
 
   if (user.googleId && !user.password) {
-    throw new BadRequestError("Password change not available for Google accounts");
+    throw new ValidationError("Password change not available for Google accounts");
   }
 
   const isMatch = await bcrypt.compare(currentPassword, user.password!);
-  if (!isMatch) throw new BadRequestError("Incorrect current password");
+  if (!isMatch) throw new ValidationError("Incorrect current password");
 
   user.password = await bcrypt.hash(newPassword, 12);
-  user.refreshToken = undefined; // Invalidate refresh tokens
+  user.refreshToken = ""; // Invalidate refresh tokens
 
   await user.save();
 
@@ -208,7 +208,7 @@ export const deleteAccount = catchAsync(async (req: Request, res: Response) => {
   });
 
   if (ownedWorkspaces.length > 0) {
-    throw new BadRequestError("Transfer ownership before deleting account");
+    throw new ValidationError("Transfer ownership before deleting account");
   }
 
   const workspaceIds = user.workspaces?.map(w => w.workspaceId.toString()) || [];
