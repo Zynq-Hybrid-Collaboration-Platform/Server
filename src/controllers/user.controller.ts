@@ -92,7 +92,35 @@ export const updateProfile = catchAsync(async (req: Request, res: Response) => {
   const { name, username, bio, timezone, avatar } = req.body;
 
   const user = await UserModel.findById(userId);
-  if (!user) throw new NotFoundError("User not found");
+
+  if (!user) {
+    // Fallback: org founder login — update the Organization record
+    const org = await Organization.findById(userId);
+    if (!org) throw new NotFoundError("User not found");
+
+    if (name) org.name = name;
+    if (avatar !== undefined) (org as any).avatar = avatar;
+    await org.save();
+
+    const workspaces = await Workspace.find({ orgId: org._id });
+    sendSuccess(res, {
+      user: {
+        id: org._id.toString(),
+        name: org.name,
+        email: org.email,
+        username: org.name.replace(/\s+/g, "").toLowerCase(),
+        avatar: (org as any).avatar || "",
+        bio: bio || "",
+        timezone: timezone || "UTC",
+        status: "online",
+        notificationPreferences: { email: true, inApp: true },
+        organizations: [{ orgId: org._id.toString(), role: "owner", joinedAt: (org.createdAt || new Date()).toISOString() }],
+        workspaces: workspaces.map(w => ({ workspaceId: w._id.toString(), name: w.name, joinedAt: w.createdAt.toISOString() })),
+        createdAt: (org.createdAt || new Date()).toISOString(),
+      }
+    });
+    return;
+  }
 
   if (username && username !== user.username) {
     const existingUser = await UserModel.findOne({ username });
@@ -124,7 +152,26 @@ export const updateProfile = catchAsync(async (req: Request, res: Response) => {
     }
   }
 
-  sendSuccess(res, { user });
+  sendSuccess(res, {
+    user: {
+      id: user._id.toString(),
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      avatar: user.avatar,
+      bio: user.bio || "",
+      timezone: user.timezone || "UTC",
+      status: user.status,
+      notificationPreferences: user.notificationPreferences || { email: true, inApp: true },
+      organizations: (user.organizations || []).map((o: any) => ({
+        orgId: o.orgId.toString(), role: o.role, joinedAt: o.joinedAt.toISOString()
+      })),
+      workspaces: (user.workspaces || []).map((w: any) => ({
+        workspaceId: w.workspaceId.toString(), name: w.name, joinedAt: w.joinedAt.toISOString()
+      })),
+      createdAt: user.createdAt?.toISOString?.() ?? null,
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────
@@ -138,7 +185,7 @@ export const changePassword = catchAsync(async (req: Request, res: Response) => 
   const { currentPassword, newPassword } = req.body;
 
   const user = await UserModel.findById(userId).select("+password");
-  if (!user) throw new NotFoundError("User not found");
+  if (!user) throw new ValidationError("Password change is not available for organization accounts");
 
   if (user.googleId && !user.password) {
     throw new ValidationError("Password change not available for Google accounts");
@@ -166,7 +213,17 @@ export const updateNotifications = catchAsync(async (req: Request, res: Response
   const { email, inApp } = req.body;
 
   const user = await UserModel.findById(userId);
-  if (!user) throw new NotFoundError("User not found");
+
+  if (!user) {
+    // Org founder — no notification preferences, return success
+    sendSuccess(res, { notificationPreferences: { email: email ?? true, inApp: inApp ?? true } });
+    return;
+  }
+
+  // Guard for older accounts that may not have this field
+  if (!user.notificationPreferences) {
+    user.notificationPreferences = { email: true, inApp: true };
+  }
 
   if (email !== undefined) user.notificationPreferences.email = email;
   if (inApp !== undefined) user.notificationPreferences.inApp = inApp;
@@ -200,7 +257,7 @@ export const deleteAccount = catchAsync(async (req: Request, res: Response) => {
   const userId = authReq.user.userId;
 
   const user = await UserModel.findById(userId);
-  if (!user) throw new NotFoundError("User not found");
+  if (!user) throw new ValidationError("Organization accounts cannot be deleted through this endpoint");
 
   // Check if owner of any workspace
   const ownedWorkspaces = await Workspace.find({
