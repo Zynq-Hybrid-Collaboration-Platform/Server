@@ -28,6 +28,9 @@ export interface IOrganization extends Document {
   category: string;
   roles: string[];
   members: mongoose.Types.ObjectId[];
+  avatar?: string;
+  bio?: string;
+  timezone?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -78,6 +81,18 @@ const organizationSchema = new Schema<IOrganization>(
         index: true,
       },
     ],
+    avatar: {
+      type: String,
+      default: "",
+    },
+    bio: {
+      type: String,
+      default: "",
+    },
+    timezone: {
+      type: String,
+      default: "UTC",
+    },
   },
   {
     timestamps: true,
