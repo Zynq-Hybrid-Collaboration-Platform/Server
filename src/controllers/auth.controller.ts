@@ -214,7 +214,9 @@ export const loginOrg = catchAsync(async (req: Request, res: Response): Promise<
     name: org.name,
     email: org.email,
     username: org.name.replace(/\s+/g, "").toLowerCase(),
-    avatar: "",
+    avatar: org.avatar || "",
+    bio: (org as any).bio || "",
+    timezone: (org as any).timezone || "UTC",
     status: "online",
     organizations: [
       {
@@ -392,7 +394,9 @@ export const getMe = catchAsync(async (req: Request, res: Response): Promise<voi
         name: org.name,
         email: org.email,
         username: org.name.replace(/\s+/g, "").toLowerCase(),
-        avatar: "",
+        avatar: org.avatar || "",
+        bio: (org as any).bio || "",
+        timezone: (org as any).timezone || "UTC",
         status: "online",
         organizations: [{
           orgId: orgIdStr,
