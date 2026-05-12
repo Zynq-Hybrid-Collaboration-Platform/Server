@@ -60,7 +60,9 @@ export const getProfile = catchAsync(async (req: Request, res: Response): Promis
         name: org.name,
         email: org.email,
         username: org.name.replace(/\s+/g, "").toLowerCase(),
-        avatar: "",
+        avatar: org.avatar || "",
+        bio: (org as any).bio || "",
+        timezone: (org as any).timezone || "UTC",
         status: "online",
         organizations: [{
           orgId: orgIdStr,
@@ -99,6 +101,8 @@ export const updateProfile = catchAsync(async (req: Request, res: Response) => {
     if (!org) throw new NotFoundError("User not found");
 
     if (name) org.name = name;
+    if (bio !== undefined) (org as any).bio = bio;
+    if (timezone) (org as any).timezone = timezone;
     if (avatar !== undefined) (org as any).avatar = avatar;
     await org.save();
 
@@ -109,9 +113,9 @@ export const updateProfile = catchAsync(async (req: Request, res: Response) => {
         name: org.name,
         email: org.email,
         username: org.name.replace(/\s+/g, "").toLowerCase(),
-        avatar: (org as any).avatar || "",
-        bio: bio || "",
-        timezone: timezone || "UTC",
+        avatar: org.avatar || "",
+        bio: (org as any).bio || "",
+        timezone: (org as any).timezone || "UTC",
         status: "online",
         notificationPreferences: { email: true, inApp: true },
         organizations: [{ orgId: org._id.toString(), role: "owner", joinedAt: (org.createdAt || new Date()).toISOString() }],
