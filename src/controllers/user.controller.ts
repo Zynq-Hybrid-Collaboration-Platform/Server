@@ -35,12 +35,12 @@ export const getProfile = catchAsync(async (req: Request, res: Response): Promis
         organizations: (user.organizations || []).map((o: any) => ({
           orgId: o.orgId.toString(),
           role: o.role,
-          joinedAt: o.joinedAt.toISOString(),
+          joinedAt: o.joinedAt instanceof Date ? o.joinedAt.toISOString() : o.joinedAt,
         })),
         workspaces: (user.workspaces || []).map((w: any) => ({
           workspaceId: w.workspaceId.toString(),
           name: w.name,
-          joinedAt: w.joinedAt.toISOString(),
+          joinedAt: w.joinedAt instanceof Date ? w.joinedAt.toISOString() : w.joinedAt,
         })),
         createdAt: user.createdAt?.toISOString?.() ?? null,
       },
@@ -168,10 +168,14 @@ export const updateProfile = catchAsync(async (req: Request, res: Response) => {
       status: user.status,
       notificationPreferences: user.notificationPreferences || { email: true, inApp: true },
       organizations: (user.organizations || []).map((o: any) => ({
-        orgId: o.orgId.toString(), role: o.role, joinedAt: o.joinedAt.toISOString()
+        orgId: o.orgId.toString(),
+        role: o.role,
+        joinedAt: o.joinedAt instanceof Date ? o.joinedAt.toISOString() : o.joinedAt
       })),
       workspaces: (user.workspaces || []).map((w: any) => ({
-        workspaceId: w.workspaceId.toString(), name: w.name, joinedAt: w.joinedAt.toISOString()
+        workspaceId: w.workspaceId.toString(),
+        name: w.name,
+        joinedAt: w.joinedAt instanceof Date ? w.joinedAt.toISOString() : w.joinedAt
       })),
       createdAt: user.createdAt?.toISOString?.() ?? null,
     }
@@ -189,7 +193,21 @@ export const changePassword = catchAsync(async (req: Request, res: Response) => 
   const { currentPassword, newPassword } = req.body;
 
   const user = await UserModel.findById(userId).select("+password");
-  if (!user) throw new ValidationError("Password change is not available for organization accounts");
+
+  if (!user) {
+    // Fallback: Org Founder login — change Organization password
+    const org = await Organization.findById(userId).select("+password");
+    if (!org) throw new NotFoundError("User not found");
+
+    const isMatch = await bcrypt.compare(currentPassword, org.password);
+    if (!isMatch) throw new ValidationError("Incorrect current password");
+
+    org.password = await bcrypt.hash(newPassword, 12);
+    await org.save();
+
+    sendSuccess(res, { message: "Organization password updated successfully" });
+    return;
+  }
 
   if (user.googleId && !user.password) {
     throw new ValidationError("Password change not available for Google accounts");
