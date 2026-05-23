@@ -315,7 +315,7 @@ class EmailService {
     resetToken: string,
     userName?: string
   ): Promise<void> {
-    const resetUrl = `${config.FRONTEND_URLS[0]}/reset-password/${resetToken}`;
+    const resetUrl = `${config.FRONTEND_URLS[0]}/reset-password?token=${resetToken}`;
 
     await this.send({
       to,
