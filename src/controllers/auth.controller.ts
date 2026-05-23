@@ -335,7 +335,7 @@ export const forgotPassword = catchAsync(async (req: Request, res: Response): Pr
     });
 
     logger.info("Password reset token generated", { userId: user._id });
-    const resetLink = `${config.FRONTEND_URLS[0]}/reset-password?token=${rawToken}`;
+    const resetLink = `${config.FRONTEND_URLS[0]}/reset-password/${rawToken}`;
     logger.info(`🔗 RESET LINK FOR DEV: ${resetLink}`);
     
     await emailService.sendPasswordResetEmail(user.email, rawToken, user.name);
