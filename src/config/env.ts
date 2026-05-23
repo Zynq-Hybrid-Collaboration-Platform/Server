@@ -63,7 +63,7 @@ export const config = {
   // When SMTP_ENABLED is false (default), the email service
   // uses Ethereal in development (auto-preview URLs) and
   // skips sending entirely in production.
-  SMTP_ENABLED: optionalEnv("SMTP_ENABLED", "false") === "true",
+  SMTP_ENABLED: optionalEnv("SMTP_ENABLED", "false").trim().toLowerCase() === "true",
   SMTP_HOST: optionalEnv("SMTP_HOST", ""),
   SMTP_PORT: parseInt(optionalEnv("SMTP_PORT", "587"), 10),
   SMTP_USER: optionalEnv("SMTP_USER", ""),
